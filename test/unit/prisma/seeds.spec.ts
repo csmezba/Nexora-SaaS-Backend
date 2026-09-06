@@ -17,6 +17,10 @@ import {
   seedAuth,
   SEED_OAUTH_ACCOUNTS,
 } from '../../../src/prisma/seeds/auth.seed.js';
+import {
+  seedTeams,
+  SEED_TEAMS,
+} from '../../../src/prisma/seeds/team.seed.js';
 import { runSeeds } from '../../../src/prisma/seeds/seed.js';
 
 describe('Prisma Seed Modules', () => {
@@ -27,6 +31,8 @@ describe('Prisma Seed Modules', () => {
   let mockRoleModel: any;
   let mockRolePermModel: any;
   let mockMemberRoleModel: any;
+  let mockTeamModel: any;
+  let mockTeamMemberModel: any;
   let mockSessionModel: any;
   let mockOAuthModel: any;
 
@@ -124,6 +130,30 @@ describe('Prisma Seed Modules', () => {
       ),
     };
 
+    mockTeamModel = {
+      all: vi.fn().mockResolvedValue([]),
+      first: vi.fn().mockResolvedValue(null),
+      where: vi.fn().mockReturnValue({
+        first: vi.fn().mockResolvedValue(null),
+        all: vi.fn().mockResolvedValue([]),
+      }),
+      create: vi.fn().mockImplementation((data) =>
+        Promise.resolve({
+          id: Math.floor(Math.random() * 1000) + 1,
+          ...data,
+        }),
+      ),
+    };
+
+    mockTeamMemberModel = {
+      all: vi.fn().mockResolvedValue([]),
+      create: vi.fn().mockImplementation((data) =>
+        Promise.resolve({
+          ...data,
+        }),
+      ),
+    };
+
     mockSessionModel = {
       all: vi.fn().mockResolvedValue([]),
       create: vi.fn().mockImplementation((data) =>
@@ -153,6 +183,8 @@ describe('Prisma Seed Modules', () => {
       Role: mockRoleModel,
       RolePermission: mockRolePermModel,
       OrganizationMemberRole: mockMemberRoleModel,
+      Team: mockTeamModel,
+      TeamMember: mockTeamMemberModel,
       UserSession: mockSessionModel,
       OAuthAccount: mockOAuthModel,
     };
@@ -312,6 +344,28 @@ describe('Prisma Seed Modules', () => {
     });
   });
 
+  describe('Team Seed', () => {
+    it('should create teams and team member assignments', async () => {
+      mockOrgModel.all.mockResolvedValue([
+        { id: 1, pubId: 'org_1', name: 'Nexora Labs', slug: 'nexora-labs' },
+        { id: 2, pubId: 'org_2', name: 'Acme Corporation', slug: 'acme-corp' },
+      ]);
+      mockUserModel.all.mockResolvedValue(
+        SEED_USERS.map((u, i) => ({
+          id: i + 1,
+          pubId: `usr_${i + 1}`,
+          email: u.email,
+        })),
+      );
+
+      const result = await seedTeams();
+
+      expect(result.teams).toHaveLength(SEED_TEAMS.length);
+      expect(mockTeamModel.create).toHaveBeenCalledTimes(SEED_TEAMS.length);
+      expect(mockTeamMemberModel.create).toHaveBeenCalled();
+    });
+  });
+
   describe('Seed Runner (runSeeds)', () => {
     it('should run individual target seeds', async () => {
       await expect(runSeeds('user')).resolves.not.toThrow();
@@ -319,6 +373,7 @@ describe('Prisma Seed Modules', () => {
       await expect(runSeeds('organization')).resolves.not.toThrow();
       await expect(runSeeds('role')).resolves.not.toThrow();
       await expect(runSeeds('auth')).resolves.not.toThrow();
+      await expect(runSeeds('team')).resolves.not.toThrow();
     });
 
     it('should run full suite when target is "all"', async () => {

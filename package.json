@@ -28,7 +28,8 @@
     "seed:auth": "jiti src/prisma/seeds/seed.ts auth",
     "seed:organization": "jiti src/prisma/seeds/seed.ts organization",
     "seed:permission": "jiti src/prisma/seeds/seed.ts permission",
-    "seed:role": "jiti src/prisma/seeds/seed.ts role"
+    "seed:role": "jiti src/prisma/seeds/seed.ts role",
+    "seed:team": "jiti src/prisma/seeds/seed.ts team"
   },
   "dependencies": {
     "@apollo/server": "^5.5.1",

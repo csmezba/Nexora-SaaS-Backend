@@ -4,6 +4,7 @@ import { seedUsers } from './user.seed.js';
 import { seedAuth } from './auth.seed.js';
 import { seedOrganizations } from './organization.seed.js';
 import { seedRoles } from './role.seed.js';
+import { seedTeams } from './team.seed.js';
 
 export type SeedTarget =
   | 'all'
@@ -16,7 +17,9 @@ export type SeedTarget =
   | 'permission'
   | 'permissions'
   | 'role'
-  | 'roles';
+  | 'roles'
+  | 'team'
+  | 'teams';
 
 export async function runSeeds(target: string = 'all'): Promise<void> {
   const startTime = Date.now();
@@ -53,27 +56,36 @@ export async function runSeeds(target: string = 'all'): Promise<void> {
         await seedRoles();
         break;
 
+      case 'team':
+      case 'teams':
+        await seedTeams();
+        break;
+
       case 'all':
       case '':
         logger.info('Running full seed suite in dependency order...\n');
-        logger.info('--- STEP 1/5: Permissions ---');
+        logger.info('--- STEP 1/6: Permissions ---');
         await seedPermissions();
 
         console.log('');
-        logger.info('--- STEP 2/5: Users ---');
+        logger.info('--- STEP 2/6: Users ---');
         await seedUsers();
 
         console.log('');
-        logger.info('--- STEP 3/5: Auth ---');
+        logger.info('--- STEP 3/6: Auth ---');
         await seedAuth();
 
         console.log('');
-        logger.info('--- STEP 4/5: Organizations & Members ---');
+        logger.info('--- STEP 4/6: Organizations & Members ---');
         await seedOrganizations();
 
         console.log('');
-        logger.info('--- STEP 5/5: Roles & RolePermissions ---');
+        logger.info('--- STEP 5/6: Roles & RolePermissions ---');
         await seedRoles();
+
+        console.log('');
+        logger.info('--- STEP 6/6: Teams & TeamMembers ---');
+        await seedTeams();
         break;
 
       case '--help':
@@ -114,6 +126,7 @@ Available Targets:
   organization | org              Seed demo organizations and memberships
   permission | permissions        Seed standard system permissions
   role | roles                    Seed organization roles and permission bindings
+  team | teams                    Seed teams and team memberships
 
 NPM Script Shortcuts:
   npm run seed:user
@@ -121,6 +134,7 @@ NPM Script Shortcuts:
   npm run seed:organization
   npm run seed:permission
   npm run seed:role
+  npm run seed:team
   npm run seed:all
   `);
 }
@@ -132,6 +146,7 @@ export {
   seedAuth,
   seedOrganizations,
   seedRoles,
+  seedTeams,
 };
 
 // Direct CLI execution
