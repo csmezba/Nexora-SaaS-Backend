@@ -17,6 +17,15 @@ input AddOrganizationMemberInput {
   userId: String
 }
 
+"""Input payload for adding a user to a team"""
+input AddTeamMemberInput {
+  """Team public unique identifier"""
+  teamPubId: String!
+
+  """User public identifier (pubId) or email to add to the team"""
+  userPubId: String!
+}
+
 """Input payload for assigning or updating permissions of a role"""
 input AssignPermissionsInput {
   """List of permission pubIds to associate with the role"""
@@ -100,6 +109,21 @@ input CreateRoleInput {
   permissionPubIds: [String!]
 }
 
+"""Input payload for creating a new team within an organization"""
+input CreateTeamInput {
+  """Team description"""
+  description: String
+
+  """List of member user pubIds to add to the team initially"""
+  initialMemberPubIds: [String!]
+
+  """Team name (e.g. Frontend Engineering, Product Design, Growth)"""
+  name: String!
+
+  """Organization pubId or slug where the team belongs"""
+  organizationPubId: String!
+}
+
 """
 A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
 """
@@ -129,6 +153,15 @@ type DeleteRoleResponse {
   message: String!
 
   """Indicates whether the role was deleted successfully"""
+  success: Boolean!
+}
+
+"""Response returned after deleting a team"""
+type DeleteTeamResponse {
+  """Status message"""
+  message: String!
+
+  """Whether deletion was successful"""
   success: Boolean!
 }
 
@@ -163,6 +196,9 @@ type Mutation {
   """Add a new member to an organization (Requires OWNER or ADMIN role)"""
   addOrganizationMember(input: AddOrganizationMemberInput!): MemberActionResponse!
 
+  """Add a user to a team (Requires OWNER, ADMIN, or MANAGER role)"""
+  addTeamMember(input: AddTeamMemberInput!): TeamActionResponse!
+
   """
   Assign or synchronize permissions for a role (Requires OWNER or ADMIN role)
   """
@@ -181,6 +217,11 @@ type Mutation {
   Create a new organization role (Requires OWNER or ADMIN role in organization)
   """
   createRole(input: CreateRoleInput!): Role!
+
+  """
+  Create a new team within an organization (Requires OWNER, ADMIN, or MANAGER role)
+  """
+  createTeam(input: CreateTeamInput!): Team!
 
   """Delete an organization (Requires OWNER role)"""
   deleteOrganization(
@@ -201,6 +242,14 @@ type Mutation {
     """Role pubId"""
     pubId: String!
   ): DeleteRoleResponse!
+
+  """
+  Delete a team from an organization (Requires OWNER, ADMIN, or MANAGER role)
+  """
+  deleteTeam(
+    """Team pubId"""
+    pubId: String!
+  ): DeleteTeamResponse!
 
   """Leave an organization as a member"""
   leaveOrganization(
@@ -227,6 +276,9 @@ type Mutation {
   Remove a role from an organization member (Requires OWNER or ADMIN role)
   """
   removeRoleFromMember(input: RemoveRoleFromMemberInput!): RoleActionResponse!
+
+  """Remove a user from a team (Requires OWNER/ADMIN role or self-removal)"""
+  removeTeamMember(input: RemoveTeamMemberInput!): TeamActionResponse!
 
   """Update organization details (Requires OWNER or ADMIN role)"""
   updateOrganization(
@@ -256,6 +308,14 @@ type Mutation {
     """Role pubId"""
     pubId: String!
   ): Role!
+
+  """Update team details (Requires OWNER, ADMIN, or MANAGER role)"""
+  updateTeam(
+    input: UpdateTeamInput!
+
+    """Team pubId"""
+    pubId: String!
+  ): Team!
 }
 
 """Organization details"""
@@ -381,6 +441,12 @@ type Query {
     organizationPubId: String!
   ): [Role!]!
 
+  """Fetch all teams belonging to an organization"""
+  organizationTeams(
+    """Organization pubId or slug"""
+    organizationPubId: String!
+  ): [Team!]!
+
   """Fetch all available system permissions"""
   permissions: [Permission!]!
 
@@ -389,6 +455,24 @@ type Query {
     """Role pubId"""
     pubId: String!
   ): Role!
+
+  """Fetch team details by unique team pubId"""
+  team(
+    """Team pubId"""
+    pubId: String!
+  ): Team!
+
+  """Fetch all members belonging to a team"""
+  teamMembers(
+    """Team pubId"""
+    teamPubId: String!
+  ): [TeamMember!]!
+
+  """Fetch teams that the authenticated user is a member of"""
+  userTeams(
+    """Optional organization filter (pubId or slug)"""
+    organizationPubId: String
+  ): [Team!]!
 }
 
 """Input payload for refreshing access token"""
@@ -433,6 +517,15 @@ input RemoveRoleFromMemberInput {
   rolePubId: String!
 }
 
+"""Input payload for removing a user from a team"""
+input RemoveTeamMemberInput {
+  """Team public unique identifier"""
+  teamPubId: String!
+
+  """User public identifier (pubId) or email to remove from the team"""
+  userPubId: String!
+}
+
 """Role details"""
 type Role {
   """Role creation timestamp"""
@@ -464,6 +557,59 @@ type RoleActionResponse {
 
   """Whether the operation succeeded"""
   success: Boolean!
+}
+
+"""Team details"""
+type Team {
+  """Creation timestamp"""
+  createdAt: DateTime!
+
+  """Team description"""
+  description: String
+
+  """Total number of members in this team"""
+  memberCount: Int!
+
+  """List of team members"""
+  members: [TeamMember!]
+
+  """Team name"""
+  name: String!
+
+  """Parent organization public identifier"""
+  organizationPubId: String!
+
+  """Unique public team identifier"""
+  pubId: String!
+
+  """Last update timestamp"""
+  updatedAt: DateTime!
+}
+
+"""
+Response returned after performing team actions (e.g. member add/remove)
+"""
+type TeamActionResponse {
+  """Status message"""
+  message: String!
+
+  """Whether the action was successful"""
+  success: Boolean!
+}
+
+"""Team membership details"""
+type TeamMember {
+  """Timestamp when member joined the team"""
+  joinedAt: DateTime!
+
+  """Unique public membership identifier"""
+  pubId: String!
+
+  """Team pubId"""
+  teamPubId: String!
+
+  """Member user profile"""
+  user: User
 }
 
 """Input payload for updating a member role"""
@@ -511,6 +657,15 @@ input UpdateRoleInput {
   description: String
 
   """Role display name"""
+  name: String
+}
+
+"""Input payload for updating team details"""
+input UpdateTeamInput {
+  """New team description"""
+  description: String
+
+  """New team name"""
   name: String
 }
 

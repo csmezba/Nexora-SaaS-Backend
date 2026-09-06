@@ -8,6 +8,7 @@ import { UserModule } from './user/user.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { OrganizationModule } from './organization/organization.module.js';
 import { RoleModule } from './role/role.module.js';
+import { TeamModule } from './team/team.module.js';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter.js';
 import { ResponseFormatPlugin } from './common/plugins/response-format.plugin.js';
 import { TransformResponseInterceptor } from './common/interceptors/transform-response.interceptor.js';
@@ -57,6 +58,7 @@ import { ObserveModule } from './observe.js';
     AuthModule,
     OrganizationModule,
     RoleModule,
+    TeamModule,
     ObserveModule.forRoot({
       appKey: process.env.OBSERVE_APP_KEY || '',
       appSecret: process.env.OBSERVE_APP_SECRET || '',

@@ -53,6 +53,14 @@ export function getMemberModel(
   );
 }
 
+export async function findOrgById(
+  prisma: PrismaService,
+  id: number,
+): Promise<PrismaOrganizationRecord | null> {
+  const orgModel = getOrgModel(prisma);
+  return orgModel.first({ id });
+}
+
 export async function findByPubIdOrSlug(
   prisma: PrismaService,
   identifier: string,
