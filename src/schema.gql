@@ -17,6 +17,15 @@ input AddOrganizationMemberInput {
   userId: String
 }
 
+"""Input payload for adding a user to a project"""
+input AddProjectMemberInput {
+  """Project unique pubId"""
+  projectPubId: String!
+
+  """User identifier (pubId or email) to add to the project"""
+  userPubId: String!
+}
+
 """Input payload for adding a user to a team"""
 input AddTeamMemberInput {
   """Team public unique identifier"""
@@ -94,6 +103,36 @@ input CreatePermissionInput {
   resource: String!
 }
 
+"""Input payload for creating a new project within an organization"""
+input CreateProjectInput {
+  """Detailed description of project goals and scope"""
+  description: String
+
+  """Target completion due date"""
+  dueDate: DateTime
+
+  """List of initial project member user pubIds"""
+  initialMemberPubIds: [String!]
+
+  """Unique project key code used for task prefixing (e.g. NEX, PROJ, CLD)"""
+  key: String!
+
+  """Project display name (e.g. NextGen Web App, Cloud Migration)"""
+  name: String!
+
+  """Organization pubId or slug where the project belongs"""
+  organizationPubId: String!
+
+  """Planned project start date"""
+  startDate: DateTime
+
+  """Initial project status"""
+  status: ProjectStatus = ACTIVE
+
+  """Optional team pubId to assign this project to"""
+  teamPubId: String
+}
+
 """Input payload for creating a new organization role"""
 input CreateRoleInput {
   """Role description"""
@@ -147,6 +186,15 @@ type DeletePermissionResponse {
   success: Boolean!
 }
 
+"""Response returned after deleting a project"""
+type DeleteProjectResponse {
+  """Status message"""
+  message: String!
+
+  """Whether deletion was successful"""
+  success: Boolean!
+}
+
 """Response payload for deleting a role"""
 type DeleteRoleResponse {
   """Status message"""
@@ -196,6 +244,11 @@ type Mutation {
   """Add a new member to an organization (Requires OWNER or ADMIN role)"""
   addOrganizationMember(input: AddOrganizationMemberInput!): MemberActionResponse!
 
+  """
+  Add an organization member to a project (Requires OWNER, ADMIN, MANAGER, or project creator)
+  """
+  addProjectMember(input: AddProjectMemberInput!): ProjectActionResponse!
+
   """Add a user to a team (Requires OWNER, ADMIN, or MANAGER role)"""
   addTeamMember(input: AddTeamMemberInput!): TeamActionResponse!
 
@@ -212,6 +265,11 @@ type Mutation {
 
   """Create a new permission entry"""
   createPermission(input: CreatePermissionInput!): Permission!
+
+  """
+  Create a new project within an organization (Requires OWNER, ADMIN, MANAGER, or DEVELOPER role)
+  """
+  createProject(input: CreateProjectInput!): Project!
 
   """
   Create a new organization role (Requires OWNER or ADMIN role in organization)
@@ -234,6 +292,14 @@ type Mutation {
     """Permission pubId"""
     pubId: String!
   ): DeletePermissionResponse!
+
+  """
+  Delete a project from an organization (Requires OWNER, ADMIN, or project creator)
+  """
+  deleteProject(
+    """Project pubId"""
+    pubId: String!
+  ): DeleteProjectResponse!
 
   """
   Delete a role from organization (Requires OWNER or ADMIN role in organization)
@@ -273,6 +339,11 @@ type Mutation {
   removeOrganizationMember(input: RemoveMemberInput!): MemberActionResponse!
 
   """
+  Remove a member from a project (Requires OWNER/ADMIN/MANAGER role or self-removal)
+  """
+  removeProjectMember(input: RemoveProjectMemberInput!): ProjectActionResponse!
+
+  """
   Remove a role from an organization member (Requires OWNER or ADMIN role)
   """
   removeRoleFromMember(input: RemoveRoleFromMemberInput!): RoleActionResponse!
@@ -300,6 +371,16 @@ type Mutation {
     """Permission pubId"""
     pubId: String!
   ): Permission!
+
+  """
+  Update project details (Requires OWNER, ADMIN, MANAGER, or project creator)
+  """
+  updateProject(
+    input: UpdateProjectInput!
+
+    """Project pubId"""
+    pubId: String!
+  ): Project!
 
   """Update role details (Requires OWNER or ADMIN role in organization)"""
   updateRole(
@@ -399,6 +480,87 @@ type Permission {
   updatedAt: DateTime!
 }
 
+"""Project details and metadata"""
+type Project {
+  """Creation timestamp"""
+  createdAt: DateTime!
+
+  """Project creator profile"""
+  createdBy: User!
+
+  """Project description"""
+  description: String
+
+  """Project due date"""
+  dueDate: DateTime
+
+  """Project key code (e.g. NEX, PROJ)"""
+  key: String!
+
+  """Total number of members assigned to this project"""
+  memberCount: Int!
+
+  """List of assigned project members"""
+  members: [ProjectMember!]
+
+  """Project display name"""
+  name: String!
+
+  """Parent organization public identifier"""
+  organizationPubId: String!
+
+  """Unique public project identifier"""
+  pubId: String!
+
+  """Project start date"""
+  startDate: DateTime
+
+  """Current lifecycle status"""
+  status: ProjectStatus!
+
+  """Assigned team details"""
+  team: Team
+
+  """Assigned team public identifier"""
+  teamPubId: String
+
+  """Last update timestamp"""
+  updatedAt: DateTime!
+}
+
+"""Response returned after performing project member actions"""
+type ProjectActionResponse {
+  """Status message"""
+  message: String!
+
+  """Whether the action was successful"""
+  success: Boolean!
+}
+
+"""Project member details"""
+type ProjectMember {
+  """Timestamp when member joined the project"""
+  joinedAt: DateTime!
+
+  """Project pubId"""
+  projectPubId: String!
+
+  """Unique public membership identifier"""
+  pubId: String!
+
+  """Member user profile"""
+  user: User
+}
+
+"""Lifecycle status of a project"""
+enum ProjectStatus {
+  ACTIVE
+  CANCELLED
+  COMPLETED
+  ON_HOLD
+  PLANNING
+}
+
 type Query {
   """Fetch current logged in user profile"""
   me: User!
@@ -435,6 +597,12 @@ type Query {
     organizationPubId: String!
   ): [OrganizationMember!]!
 
+  """Fetch all projects belonging to an organization"""
+  organizationProjects(
+    """Organization pubId or slug"""
+    organizationPubId: String!
+  ): [Project!]!
+
   """Fetch all custom roles belonging to an organization"""
   organizationRoles(
     """Organization pubId or slug"""
@@ -449,6 +617,18 @@ type Query {
 
   """Fetch all available system permissions"""
   permissions: [Permission!]!
+
+  """Fetch project details by unique pubId"""
+  project(
+    """Project pubId"""
+    pubId: String!
+  ): Project!
+
+  """Fetch all members assigned to a project"""
+  projectMembers(
+    """Project pubId"""
+    projectPubId: String!
+  ): [ProjectMember!]!
 
   """Fetch role details with permissions by unique pubId"""
   role(
@@ -467,6 +647,18 @@ type Query {
     """Team pubId"""
     teamPubId: String!
   ): [TeamMember!]!
+
+  """Fetch all projects assigned to a specific team"""
+  teamProjects(
+    """Team pubId"""
+    teamPubId: String!
+  ): [Project!]!
+
+  """Fetch projects that the authenticated user is assigned to as a member"""
+  userProjects(
+    """Optional organization filter (pubId or slug)"""
+    organizationPubId: String
+  ): [Project!]!
 
   """Fetch teams that the authenticated user is a member of"""
   userTeams(
@@ -503,6 +695,15 @@ input RemoveMemberInput {
 
   """Target user identifier (pubId, email, or ID) to remove"""
   userId: String!
+}
+
+"""Input payload for removing a user from a project"""
+input RemoveProjectMemberInput {
+  """Project unique pubId"""
+  projectPubId: String!
+
+  """User identifier (pubId or email) to remove from the project"""
+  userPubId: String!
 }
 
 """Input payload for removing an organization role from a member"""
@@ -649,6 +850,30 @@ input UpdatePermissionInput {
 
   """Target resource name"""
   resource: String
+}
+
+"""Input payload for updating an existing project"""
+input UpdateProjectInput {
+  """Project description"""
+  description: String
+
+  """Project due date"""
+  dueDate: DateTime
+
+  """Project key code"""
+  key: String
+
+  """Project display name"""
+  name: String
+
+  """Project start date"""
+  startDate: DateTime
+
+  """New project status"""
+  status: ProjectStatus
+
+  """Assigned team pubId (pass empty string or null to unassign)"""
+  teamPubId: String
 }
 
 """Input payload for updating an existing role"""
