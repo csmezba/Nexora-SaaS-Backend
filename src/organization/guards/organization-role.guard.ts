@@ -2,31 +2,21 @@ import {
   CanActivate,
   ExecutionContext,
   ForbiddenException,
-  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { GqlExecutionContext } from '@nestjs/graphql';
+import { PrismaService } from '../../prisma/prisma.service.js';
 import { ORG_ROLES_KEY } from '../decorators/require-org-role.decorator.js';
-import { OrganizationRole } from '../domain/enums/organization-role.enum.js';
-import {
-  ORGANIZATION_MEMBER_REPOSITORY,
-  type IOrganizationMemberRepository,
-} from '../domain/repositories/organization-member-repository.interface.js';
-import {
-  ORGANIZATION_REPOSITORY,
-  type IOrganizationRepository,
-} from '../domain/repositories/organization-repository.interface.js';
+import { OrganizationRole } from '../enums/organization-role.enum.js';
+import * as OrgHelper from '../organization.helper.js';
 
 @Injectable()
 export class OrganizationRoleGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
-    @Inject(ORGANIZATION_MEMBER_REPOSITORY)
-    private readonly memberRepository: IOrganizationMemberRepository,
-    @Inject(ORGANIZATION_REPOSITORY)
-    private readonly orgRepository: IOrganizationRepository,
+    private readonly prisma: PrismaService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -64,12 +54,16 @@ export class OrganizationRoleGuard implements CanActivate {
       return true;
     }
 
-    const org = await this.orgRepository.findByPubIdOrSlug(String(rawOrgId));
+    const org = await OrgHelper.findByPubIdOrSlug(this.prisma, String(rawOrgId));
     if (!org) {
       throw new NotFoundException(`Organization '${rawOrgId}' not found`);
     }
 
-    const member = await this.memberRepository.findByOrgAndUser(org.id, userId);
+    const member = await OrgHelper.findByOrgAndUser(
+      this.prisma,
+      org.id,
+      userId,
+    );
     if (!member) {
       throw new NotFoundException('You are not a member of this organization');
     }

@@ -2,28 +2,14 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
-  Inject,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  ROLE_REPOSITORY,
-  type IRoleRepository,
-} from './domain/repositories/role-repository.interface.js';
-import {
-  PERMISSION_REPOSITORY,
-  type IPermissionRepository,
-} from './domain/repositories/permission-repository.interface.js';
-import {
-  ORGANIZATION_REPOSITORY,
-  type IOrganizationRepository,
-} from '../organization/domain/repositories/organization-repository.interface.js';
-import {
-  ORGANIZATION_MEMBER_REPOSITORY,
-  type IOrganizationMemberRepository,
-} from '../organization/domain/repositories/organization-member-repository.interface.js';
-import { OrganizationRole } from '../organization/domain/enums/organization-role.enum.js';
+import { PrismaService } from '../prisma/prisma.service.js';
+import { OrganizationRole } from '../organization/enums/organization-role.enum.js';
+import * as OrgHelper from '../organization/organization.helper.js';
+import * as RoleHelper from './role.helper.js';
 import type {
   AssignPermissionsInput,
   AssignRoleToMemberInput,
@@ -40,24 +26,19 @@ import type {
   PermissionResponseDto,
   UpdatePermissionInput,
 } from './dto/permission.dto.js';
+import type {
+  PrismaPermissionRecord,
+  PrismaRoleRecord,
+} from './types/role.types.js';
 
 @Injectable()
 export class RoleService {
   private readonly logger = new Logger(RoleService.name);
 
-  constructor(
-    @Inject(ROLE_REPOSITORY)
-    private readonly roleRepository: IRoleRepository,
-    @Inject(PERMISSION_REPOSITORY)
-    private readonly permissionRepository: IPermissionRepository,
-    @Inject(ORGANIZATION_REPOSITORY)
-    private readonly organizationRepository: IOrganizationRepository,
-    @Inject(ORGANIZATION_MEMBER_REPOSITORY)
-    private readonly memberRepository: IOrganizationMemberRepository,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   private async resolveOrganization(pubIdOrSlug: string) {
-    const org = await this.organizationRepository.findByPubIdOrSlug(pubIdOrSlug);
+    const org = await OrgHelper.findByPubIdOrSlug(this.prisma, pubIdOrSlug);
     if (!org) {
       throw new NotFoundException(`Organization '${pubIdOrSlug}' not found`);
     }
@@ -65,7 +46,8 @@ export class RoleService {
   }
 
   private async ensureAdminOrOwner(organizationId: number, userId: number) {
-    const member = await this.memberRepository.findByOrgAndUser(
+    const member = await OrgHelper.findByOrgAndUser(
+      this.prisma,
       organizationId,
       userId,
     );
@@ -84,7 +66,8 @@ export class RoleService {
   }
 
   private async ensureMember(organizationId: number, userId: number) {
-    const member = await this.memberRepository.findByOrgAndUser(
+    const member = await OrgHelper.findByOrgAndUser(
+      this.prisma,
       organizationId,
       userId,
     );
@@ -103,7 +86,8 @@ export class RoleService {
     const org = await this.resolveOrganization(input.organizationPubId);
     await this.ensureAdminOrOwner(org.id, userId);
 
-    const existingRole = await this.roleRepository.findByNameAndOrg(
+    const existingRole = await RoleHelper.findRoleByNameAndOrg(
+      this.prisma,
       org.id,
       input.name,
     );
@@ -113,26 +97,28 @@ export class RoleService {
       );
     }
 
-    const role = await this.roleRepository.create({
+    const role = await RoleHelper.createRole(this.prisma, {
       name: input.name,
       description: input.description,
       organizationId: org.id,
     });
 
     if (input.permissionPubIds && input.permissionPubIds.length > 0) {
-      const permissions = await this.permissionRepository.findByPubIds(
+      const permissions = await RoleHelper.findPermissionsByPubIds(
+        this.prisma,
         input.permissionPubIds,
       );
       if (permissions.length !== input.permissionPubIds.length) {
         throw new BadRequestException('One or more permission IDs are invalid');
       }
-      await this.roleRepository.syncPermissions(
+      await RoleHelper.syncRolePermissions(
+        this.prisma,
         role.id,
         permissions.map((p) => p.id),
       );
     }
 
-    const created = await this.roleRepository.findById(role.id);
+    const created = await RoleHelper.findRoleById(this.prisma, role.id);
     if (!created) {
       throw new NotFoundException('Role could not be retrieved after creation');
     }
@@ -145,7 +131,7 @@ export class RoleService {
     userId: number,
     input: UpdateRoleInput,
   ): Promise<RoleResponseDto> {
-    const role = await this.roleRepository.findByPubId(pubId);
+    const role = await RoleHelper.findRoleByPubId(this.prisma, pubId);
     if (!role) {
       throw new NotFoundException(`Role with ID '${pubId}' not found`);
     }
@@ -153,7 +139,8 @@ export class RoleService {
     await this.ensureAdminOrOwner(role.organizationId, userId);
 
     if (input.name && input.name !== role.name) {
-      const existing = await this.roleRepository.findByNameAndOrg(
+      const existing = await RoleHelper.findRoleByNameAndOrg(
+        this.prisma,
         role.organizationId,
         input.name,
       );
@@ -164,10 +151,14 @@ export class RoleService {
       }
     }
 
-    const updated = await this.roleRepository.update(role.id, {
+    const updated = await RoleHelper.updateRole(this.prisma, role.id, {
       name: input.name,
       description: input.description,
     });
+
+    if (!updated) {
+      throw new NotFoundException('Role could not be retrieved after update');
+    }
 
     return this.toRoleResponse(updated);
   }
@@ -176,14 +167,14 @@ export class RoleService {
     pubId: string,
     userId: number,
   ): Promise<DeleteRoleResponseDto> {
-    const role = await this.roleRepository.findByPubId(pubId);
+    const role = await RoleHelper.findRoleByPubId(this.prisma, pubId);
     if (!role) {
       throw new NotFoundException(`Role with ID '${pubId}' not found`);
     }
 
     await this.ensureAdminOrOwner(role.organizationId, userId);
 
-    await this.roleRepository.delete(role.id);
+    await RoleHelper.deleteRole(this.prisma, role.id);
 
     return {
       success: true,
@@ -192,7 +183,7 @@ export class RoleService {
   }
 
   async getRole(pubId: string, userId: number): Promise<RoleResponseDto> {
-    const role = await this.roleRepository.findByPubId(pubId);
+    const role = await RoleHelper.findRoleByPubId(this.prisma, pubId);
     if (!role) {
       throw new NotFoundException(`Role with ID '${pubId}' not found`);
     }
@@ -209,7 +200,7 @@ export class RoleService {
     const org = await this.resolveOrganization(organizationPubId);
     await this.ensureMember(org.id, userId);
 
-    const roles = await this.roleRepository.findAllByOrg(org.id);
+    const roles = await RoleHelper.findAllRolesByOrg(this.prisma, org.id);
     return roles.map((r) => this.toRoleResponse(r));
   }
 
@@ -218,7 +209,8 @@ export class RoleService {
   async createPermission(
     input: CreatePermissionInput,
   ): Promise<PermissionResponseDto> {
-    const existing = await this.permissionRepository.findByResourceAndAction(
+    const existing = await RoleHelper.findPermissionByResourceAndAction(
+      this.prisma,
       input.resource,
       input.action,
     );
@@ -228,7 +220,7 @@ export class RoleService {
       );
     }
 
-    const permission = await this.permissionRepository.create({
+    const permission = await RoleHelper.createPermission(this.prisma, {
       resource: input.resource,
       action: input.action,
       description: input.description,
@@ -241,7 +233,10 @@ export class RoleService {
     pubId: string,
     input: UpdatePermissionInput,
   ): Promise<PermissionResponseDto> {
-    const permission = await this.permissionRepository.findByPubId(pubId);
+    const permission = await RoleHelper.findPermissionByPubId(
+      this.prisma,
+      pubId,
+    );
     if (!permission) {
       throw new NotFoundException(`Permission with ID '${pubId}' not found`);
     }
@@ -249,11 +244,11 @@ export class RoleService {
     if (input.resource || input.action) {
       const targetResource = input.resource ?? permission.resource;
       const targetAction = input.action ?? permission.action;
-      const existing =
-        await this.permissionRepository.findByResourceAndAction(
-          targetResource,
-          targetAction,
-        );
+      const existing = await RoleHelper.findPermissionByResourceAndAction(
+        this.prisma,
+        targetResource,
+        targetAction,
+      );
       if (existing && existing.id !== permission.id) {
         throw new ConflictException(
           `Permission '${targetResource}:${targetAction}' already exists`,
@@ -261,22 +256,35 @@ export class RoleService {
       }
     }
 
-    const updated = await this.permissionRepository.update(permission.id, {
-      resource: input.resource,
-      action: input.action,
-      description: input.description,
-    });
+    const updated = await RoleHelper.updatePermission(
+      this.prisma,
+      permission.id,
+      {
+        resource: input.resource,
+        action: input.action,
+        description: input.description,
+      },
+    );
+
+    if (!updated) {
+      throw new NotFoundException(
+        'Permission could not be retrieved after update',
+      );
+    }
 
     return this.toPermissionResponse(updated);
   }
 
   async deletePermission(pubId: string): Promise<DeletePermissionResponseDto> {
-    const permission = await this.permissionRepository.findByPubId(pubId);
+    const permission = await RoleHelper.findPermissionByPubId(
+      this.prisma,
+      pubId,
+    );
     if (!permission) {
       throw new NotFoundException(`Permission with ID '${pubId}' not found`);
     }
 
-    await this.permissionRepository.delete(permission.id);
+    await RoleHelper.deletePermission(this.prisma, permission.id);
 
     return {
       success: true,
@@ -285,7 +293,7 @@ export class RoleService {
   }
 
   async listPermissions(): Promise<PermissionResponseDto[]> {
-    const permissions = await this.permissionRepository.findAll();
+    const permissions = await RoleHelper.findAllPermissions(this.prisma);
     return permissions.map((p) => this.toPermissionResponse(p));
   }
 
@@ -293,26 +301,30 @@ export class RoleService {
     userId: number,
     input: AssignPermissionsInput,
   ): Promise<RoleResponseDto> {
-    const role = await this.roleRepository.findByPubId(input.rolePubId);
+    const role = await RoleHelper.findRoleByPubId(this.prisma, input.rolePubId);
     if (!role) {
-      throw new NotFoundException(`Role with ID '${input.rolePubId}' not found`);
+      throw new NotFoundException(
+        `Role with ID '${input.rolePubId}' not found`,
+      );
     }
 
     await this.ensureAdminOrOwner(role.organizationId, userId);
 
-    const permissions = await this.permissionRepository.findByPubIds(
+    const permissions = await RoleHelper.findPermissionsByPubIds(
+      this.prisma,
       input.permissionPubIds,
     );
     if (permissions.length !== input.permissionPubIds.length) {
       throw new BadRequestException('One or more permission IDs are invalid');
     }
 
-    await this.roleRepository.syncPermissions(
+    await RoleHelper.syncRolePermissions(
+      this.prisma,
       role.id,
       permissions.map((p) => p.id),
     );
 
-    const updated = await this.roleRepository.findById(role.id);
+    const updated = await RoleHelper.findRoleById(this.prisma, role.id);
     if (!updated) {
       throw new NotFoundException('Role could not be retrieved after update');
     }
@@ -329,12 +341,16 @@ export class RoleService {
     const org = await this.resolveOrganization(input.organizationPubId);
     await this.ensureAdminOrOwner(org.id, userId);
 
-    const member = await this.memberRepository.findByPubId(input.memberPubId);
+    const member = await OrgHelper.findMemberByPubId(
+      this.prisma,
+      input.memberPubId,
+    );
     if (!member || member.organizationId !== org.id) {
       throw new NotFoundException('Organization member not found');
     }
 
-    const role = await this.roleRepository.findByPubIdAndOrg(
+    const role = await RoleHelper.findRoleByPubIdAndOrg(
+      this.prisma,
       org.id,
       input.rolePubId,
     );
@@ -344,7 +360,7 @@ export class RoleService {
       );
     }
 
-    await this.roleRepository.assignRoleToMember(member.id, role.id);
+    await RoleHelper.assignRoleToMember(this.prisma, member.id, role.id);
 
     return {
       success: true,
@@ -360,12 +376,16 @@ export class RoleService {
     const org = await this.resolveOrganization(input.organizationPubId);
     await this.ensureAdminOrOwner(org.id, userId);
 
-    const member = await this.memberRepository.findByPubId(input.memberPubId);
+    const member = await OrgHelper.findMemberByPubId(
+      this.prisma,
+      input.memberPubId,
+    );
     if (!member || member.organizationId !== org.id) {
       throw new NotFoundException('Organization member not found');
     }
 
-    const role = await this.roleRepository.findByPubIdAndOrg(
+    const role = await RoleHelper.findRoleByPubIdAndOrg(
+      this.prisma,
       org.id,
       input.rolePubId,
     );
@@ -375,7 +395,7 @@ export class RoleService {
       );
     }
 
-    await this.roleRepository.removeRoleFromMember(member.id, role.id);
+    await RoleHelper.removeRoleFromMember(this.prisma, member.id, role.id);
 
     return {
       success: true,
@@ -392,66 +412,48 @@ export class RoleService {
     const org = await this.resolveOrganization(organizationPubId);
     await this.ensureMember(org.id, userId);
 
-    const member = await this.memberRepository.findByPubId(memberPubId);
+    const member = await OrgHelper.findMemberByPubId(
+      this.prisma,
+      memberPubId,
+    );
     if (!member || member.organizationId !== org.id) {
       throw new NotFoundException('Organization member not found');
     }
 
-    const roles = await this.roleRepository.getMemberRoles(member.id);
+    const roles = await RoleHelper.getMemberRoles(this.prisma, member.id);
     return roles.map((r) => this.toRoleResponse(r));
   }
 
   // --- Helpers ---
 
-  private toRoleResponse(role: {
-    id: number;
-    pubId: string;
-    name: string;
-    description: string | null;
-    organizationId: number;
-    permissions?: {
-      id: number;
-      pubId: string;
-      resource: string;
-      action: string;
-      description: string | null;
-      createdAt: Date;
-      updatedAt: Date;
-    }[];
-    createdAt: Date;
-    updatedAt: Date;
-  }): RoleResponseDto {
+  private toRoleResponse(
+    role: PrismaRoleRecord & { permissions?: PrismaPermissionRecord[] },
+  ): RoleResponseDto {
     return {
       id: role.id,
       pubId: role.pubId,
       name: role.name,
-      description: role.description,
+      description: role.description ?? null,
       organizationId: role.organizationId,
       permissions: (role.permissions || []).map((p) =>
         this.toPermissionResponse(p),
       ),
-      createdAt: role.createdAt,
-      updatedAt: role.updatedAt,
+      createdAt: new Date(role.createdAt),
+      updatedAt: new Date(role.updatedAt),
     };
   }
 
-  private toPermissionResponse(permission: {
-    id: number;
-    pubId: string;
-    resource: string;
-    action: string;
-    description: string | null;
-    createdAt: Date;
-    updatedAt: Date;
-  }): PermissionResponseDto {
+  private toPermissionResponse(
+    permission: PrismaPermissionRecord,
+  ): PermissionResponseDto {
     return {
       id: permission.id,
       pubId: permission.pubId,
       resource: permission.resource,
       action: permission.action,
-      description: permission.description,
-      createdAt: permission.createdAt,
-      updatedAt: permission.updatedAt,
+      description: permission.description ?? null,
+      createdAt: new Date(permission.createdAt),
+      updatedAt: new Date(permission.updatedAt),
     };
   }
 }

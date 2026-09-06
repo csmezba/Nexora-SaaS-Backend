@@ -6,60 +6,119 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { OrganizationService } from '../../../src/organization/organization.service.js';
-import { IOrganizationRepository } from '../../../src/organization/domain/repositories/organization-repository.interface.js';
-import { IOrganizationMemberRepository } from '../../../src/organization/domain/repositories/organization-member-repository.interface.js';
+import * as OrgHelper from '../../../src/organization/organization.helper.js';
+import { PrismaService } from '../../../src/prisma/prisma.service.js';
 import { IUserRepository } from '../../../src/user/domain/repositories/user-repository.interface.js';
-import { OrganizationEntity } from '../../../src/organization/domain/entities/organization.entity.js';
-import { OrganizationMemberEntity } from '../../../src/organization/domain/entities/organization-member.entity.js';
-import { OrganizationRole } from '../../../src/organization/domain/enums/organization-role.enum.js';
+import { OrganizationRole } from '../../../src/organization/enums/organization-role.enum.js';
 
 describe('OrganizationService', () => {
   let service: OrganizationService;
-  let mockOrgRepo: IOrganizationRepository;
-  let mockMemberRepo: IOrganizationMemberRepository;
+  let mockPrisma: any;
   let mockUserRepo: IUserRepository;
 
-  const sampleOrg = OrganizationEntity.reconstitute({
+  const sampleOrgRecord = {
     id: 1,
     pubId: 'org_abc123',
     name: 'Acme Corp',
     slug: 'acme',
     logoUrl: null,
     description: 'Test Org',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  });
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
 
-  const sampleMember = OrganizationMemberEntity.reconstitute({
+  const sampleMemberRecord = {
     id: 100,
+    pubId: 'mem_123',
     organizationId: 1,
     userId: 10,
     role: OrganizationRole.OWNER,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  });
+    joinedAt: new Date().toISOString(),
+  };
+
+  let orgStore: any[];
+  let memberStore: any[];
 
   beforeEach(() => {
-    mockOrgRepo = {
-      findById: vi.fn(),
-      findByPubId: vi.fn(),
-      findBySlug: vi.fn(),
-      findAllByUserId: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-    };
+    orgStore = [{ ...sampleOrgRecord }];
+    memberStore = [{ ...sampleMemberRecord }];
 
-    mockMemberRepo = {
-      findById: vi.fn(),
-      findByOrgAndUser: vi.fn(),
-      findAllByOrg: vi.fn(),
-      findMembersWithUsers: vi.fn(),
-      countByOrg: vi.fn(),
-      countOwnersByOrg: vi.fn(),
-      create: vi.fn(),
-      updateRole: vi.fn(),
-      delete: vi.fn(),
+    const createModelMock = (storeGetter: () => any[]) => ({
+      first: vi.fn().mockImplementation(async (filter?: any) => {
+        const store = storeGetter();
+        if (!filter) return store[0] || null;
+        return (
+          store.find((item) =>
+            Object.entries(filter).every(([k, v]) => item[k] === v),
+          ) || null
+        );
+      }),
+      where: vi.fn().mockImplementation((predicateOrFilter: any) => {
+        let matched = storeGetter();
+        if (typeof predicateOrFilter === 'function') {
+          matched = storeGetter().filter((item) => {
+            try {
+              const proxy = new Proxy(
+                {},
+                {
+                  get:
+                    (_, prop: string) =>
+                    ({
+                      eq: (val: any) => item[prop] === val,
+                    }),
+                },
+              );
+              return predicateOrFilter(proxy);
+            } catch {
+              return true;
+            }
+          });
+        } else if (
+          predicateOrFilter &&
+          typeof predicateOrFilter === 'object'
+        ) {
+          matched = storeGetter().filter((item) =>
+            Object.entries(predicateOrFilter).every(
+              ([k, v]) => item[k] === v,
+            ),
+          );
+        }
+
+        return {
+          first: vi.fn().mockImplementation(async () => matched[0] || null),
+          all: vi.fn().mockImplementation(async () => [...matched]),
+          update: vi.fn().mockImplementation(async (data: any) => {
+            matched.forEach((item) => Object.assign(item, data));
+            return matched.length;
+          }),
+          delete: vi.fn().mockImplementation(async () => {
+            const store = storeGetter();
+            matched.forEach((item) => {
+              const idx = store.indexOf(item);
+              if (idx !== -1) store.splice(idx, 1);
+            });
+            return matched.length;
+          }),
+        };
+      }),
+      create: vi.fn().mockImplementation(async (data: any) => {
+        const created = { id: storeGetter().length + 1, ...data };
+        storeGetter().push(created);
+        return created;
+      }),
+      all: vi.fn().mockImplementation(async () => [...storeGetter()]),
+    });
+
+    const orgMock = createModelMock(() => orgStore);
+    const memberMock = createModelMock(() => memberStore);
+
+    mockPrisma = {
+      db: {
+        orm: {
+          Organization: orgMock,
+          OrganizationMember: memberMock,
+        },
+      },
     };
 
     mockUserRepo = {
@@ -72,64 +131,55 @@ describe('OrganizationService', () => {
     };
 
     service = new OrganizationService(
-      mockOrgRepo,
-      mockMemberRepo,
+      mockPrisma as unknown as PrismaService,
       mockUserRepo,
     );
   });
 
-  describe('resolveOrganization', () => {
+  describe('OrgHelper.resolveOrganization', () => {
     it('should resolve organization by pubId', async () => {
-      vi.mocked(mockOrgRepo.findByPubId).mockResolvedValue(sampleOrg);
-
-      const org = await service.resolveOrganization('org_abc123');
-      expect(org).toEqual(sampleOrg);
+      const org = await OrgHelper.resolveOrganization(mockPrisma, 'org_abc123');
+      expect(org.pubId).toBe('org_abc123');
+      expect(org.slug).toBe('acme');
     });
 
     it('should resolve organization by slug', async () => {
-      vi.mocked(mockOrgRepo.findBySlug).mockResolvedValue(sampleOrg);
-
-      const org = await service.resolveOrganization('acme');
-      expect(org).toEqual(sampleOrg);
+      const org = await OrgHelper.resolveOrganization(mockPrisma, 'acme');
+      expect(org.slug).toBe('acme');
     });
 
     it('should throw NotFoundException if organization not found', async () => {
-      vi.mocked(mockOrgRepo.findByPubId).mockResolvedValue(null);
-      vi.mocked(mockOrgRepo.findBySlug).mockResolvedValue(null);
-
-      await expect(service.resolveOrganization('nonexistent')).rejects.toThrowError(
-        NotFoundException,
-      );
+      await expect(
+        OrgHelper.resolveOrganization(mockPrisma, 'nonexistent'),
+      ).rejects.toThrowError(NotFoundException);
     });
 
     it('should wrap unknown errors in InternalServerErrorException', async () => {
-      vi.mocked(mockOrgRepo.findBySlug).mockRejectedValue(new Error('DB crashed'));
-
-      await expect(service.resolveOrganization('acme')).rejects.toThrowError(
-        InternalServerErrorException,
+      vi.mocked(mockPrisma.db.orm.Organization.where).mockImplementationOnce(
+        () => {
+          throw new Error('DB crashed');
+        },
       );
+
+      await expect(
+        OrgHelper.resolveOrganization(mockPrisma, 'acme'),
+      ).rejects.toThrowError(InternalServerErrorException);
     });
   });
 
   describe('createOrganization', () => {
     it('should create organization and owner member successfully', async () => {
-      vi.mocked(mockOrgRepo.findBySlug).mockResolvedValue(null);
-      vi.mocked(mockOrgRepo.create).mockResolvedValue(sampleOrg);
-      vi.mocked(mockMemberRepo.create).mockResolvedValue(sampleMember);
-
       const result = await service.createOrganization(10, {
-        name: 'Acme Corp',
-        slug: 'acme',
+        name: 'Beta Corp',
+        slug: 'beta',
       });
 
-      expect(result.slug).toBe('acme');
+      expect(result.slug).toBe('beta');
       expect(result.currentUserRole).toBe(OrganizationRole.OWNER);
       expect(result.memberCount).toBe(1);
     });
 
     it('should throw ConflictException if slug already exists', async () => {
-      vi.mocked(mockOrgRepo.findBySlug).mockResolvedValue(sampleOrg);
-
       await expect(
         service.createOrganization(10, {
           name: 'Acme Corp',
@@ -141,61 +191,55 @@ describe('OrganizationService', () => {
 
   describe('getOrganization', () => {
     it('should return organization with role and count', async () => {
-      vi.mocked(mockOrgRepo.findByPubId).mockResolvedValue(sampleOrg);
-      vi.mocked(mockMemberRepo.countByOrg).mockResolvedValue(3);
-      vi.mocked(mockMemberRepo.findByOrgAndUser).mockResolvedValue(sampleMember);
-
       const result = await service.getOrganization('org_abc123', 10);
-      expect(result.memberCount).toBe(3);
+      expect(result.memberCount).toBe(1);
       expect(result.currentUserRole).toBe(OrganizationRole.OWNER);
     });
   });
 
   describe('updateOrganization', () => {
     it('should reject update if user is not OWNER or ADMIN', async () => {
-      vi.mocked(mockOrgRepo.findByPubId).mockResolvedValue(sampleOrg);
-      vi.mocked(mockMemberRepo.findByOrgAndUser).mockResolvedValue(
-        OrganizationMemberEntity.reconstitute({
-          id: 101,
-          organizationId: 1,
-          userId: 10,
-          role: OrganizationRole.MEMBER,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        }),
-      );
+      memberStore.push({
+        id: 101,
+        pubId: 'mem_456',
+        organizationId: 1,
+        userId: 20,
+        role: OrganizationRole.MEMBER,
+        joinedAt: new Date().toISOString(),
+      });
 
       await expect(
-        service.updateOrganization('org_abc123', 10, { name: 'New Name' }),
+        service.updateOrganization('org_abc123', 20, { name: 'New Name' }),
       ).rejects.toThrowError(ForbiddenException);
+    });
+
+    it('should allow OWNER to update organization', async () => {
+      const updated = await service.updateOrganization('org_abc123', 10, {
+        name: 'New Acme Name',
+      });
+      expect(updated.name).toBe('New Acme Name');
     });
   });
 
   describe('deleteOrganization', () => {
     it('should allow owner to delete organization', async () => {
-      vi.mocked(mockOrgRepo.findByPubId).mockResolvedValue(sampleOrg);
-      vi.mocked(mockMemberRepo.findByOrgAndUser).mockResolvedValue(sampleMember);
-      vi.mocked(mockOrgRepo.delete).mockResolvedValue(undefined);
-
       const result = await service.deleteOrganization('org_abc123', 10);
       expect(result.success).toBe(true);
+      expect(orgStore.length).toBe(0);
     });
 
     it('should throw ForbiddenException if caller is not owner', async () => {
-      vi.mocked(mockOrgRepo.findByPubId).mockResolvedValue(sampleOrg);
-      vi.mocked(mockMemberRepo.findByOrgAndUser).mockResolvedValue(
-        OrganizationMemberEntity.reconstitute({
-          id: 102,
-          organizationId: 1,
-          userId: 10,
-          role: OrganizationRole.ADMIN,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        }),
-      );
+      memberStore.push({
+        id: 102,
+        pubId: 'mem_789',
+        organizationId: 1,
+        userId: 30,
+        role: OrganizationRole.ADMIN,
+        joinedAt: new Date().toISOString(),
+      });
 
       await expect(
-        service.deleteOrganization('org_abc123', 10),
+        service.deleteOrganization('org_abc123', 30),
       ).rejects.toThrowError(ForbiddenException);
     });
   });

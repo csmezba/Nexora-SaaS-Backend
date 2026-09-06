@@ -6,7 +6,6 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import type { SanitizedPermission } from '../domain/entities/permission.entity.js';
 
 @InputType('CreatePermissionInput', {
   description: 'Input payload for creating a new system permission',
@@ -75,7 +74,7 @@ export class UpdatePermissionInput {
 }
 
 @ObjectType('Permission', { description: 'Permission details' })
-export class PermissionResponseDto implements SanitizedPermission {
+export class PermissionResponseDto {
   id!: number;
 
   @Field(() => String, { description: 'Public unique permission identifier' })

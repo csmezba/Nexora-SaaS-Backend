@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { AuthResolver } from '../../../src/auth/auth.resolver.js';
 import { AuthService } from '../../../src/auth/auth.service.js';
-import { SanitizedUser } from '../../../src/user/domain/entities/user.entity.js';
+import type { SanitizedUser } from '../../../src/user/types/user.types.js';
 
 describe('AuthResolver', () => {
   let resolver: AuthResolver;

@@ -1,5 +1,5 @@
 import { generatePubId } from '../../common/utils/unique-id.util.js';
-import { OrganizationRole } from '../../organization/domain/enums/organization-role.enum.js';
+import { OrganizationRole } from '../../organization/enums/organization-role.enum.js';
 import { getOrmModel, logger } from './common.js';
 import { seedUsers, type SeededUserRecord } from './user.seed.js';
 
