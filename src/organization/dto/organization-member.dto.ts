@@ -6,9 +6,8 @@ import {
   IsOptional,
   IsString,
 } from 'class-validator';
-import { OrganizationRole } from '../domain/enums/organization-role.enum.js';
+import { OrganizationRole } from '../enums/organization-role.enum.js';
 import { UserResponseDto } from '../../auth/dto/auth.dto.js';
-import type { SanitizedOrganizationMember } from '../domain/entities/organization-member.entity.js';
 
 @InputType('AddOrganizationMemberInput', {
   description: 'Input payload for adding a member to an organization',
@@ -79,7 +78,7 @@ export class RemoveMemberInput {
 @ObjectType('OrganizationMember', {
   description: 'Organization membership details',
 })
-export class OrganizationMemberResponseDto implements SanitizedOrganizationMember {
+export class OrganizationMemberResponseDto {
   id!: number;
 
   @Field(() => String, { description: 'Public unique membership identifier' })

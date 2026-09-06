@@ -7,8 +7,7 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { OrganizationRole } from '../domain/enums/organization-role.enum.js';
-import type { SanitizedOrganization } from '../domain/entities/organization.entity.js';
+import { OrganizationRole } from '../enums/organization-role.enum.js';
 
 @InputType('CreateOrganizationInput', {
   description: 'Input payload for creating a new organization',
@@ -94,7 +93,7 @@ export class UpdateOrganizationInput {
 }
 
 @ObjectType('Organization', { description: 'Organization details' })
-export class OrganizationResponseDto implements SanitizedOrganization {
+export class OrganizationResponseDto {
   id!: number;
 
   @Field(() => String, { description: 'Public unique organization identifier' })

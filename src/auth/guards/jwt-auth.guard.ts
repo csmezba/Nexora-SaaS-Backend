@@ -1,29 +1,24 @@
 import {
   CanActivate,
   ExecutionContext,
-  Inject,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { GqlExecutionContext } from '@nestjs/graphql';
+import { JwtService } from '@nestjs/jwt';
 import type { Request } from 'express';
+import { PrismaService } from '../../prisma/prisma.service.js';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator.js';
-import {
-  TOKEN_SERVICE,
-  type ITokenService,
-} from '../domain/services/token-service.interface.js';
-import {
-  USER_REPOSITORY,
-  type IUserRepository,
-} from '../../user/domain/repositories/user-repository.interface.js';
+import * as AuthHelper from '../auth.helper.js';
+import * as UserHelper from '../../user/user.helper.js';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
-    @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
-    @Inject(USER_REPOSITORY) private readonly userRepository: IUserRepository,
+    private readonly jwtService: JwtService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -44,15 +39,19 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     try {
-      const payload = await this.tokenService.verifyAccessToken(token);
-      const user = await this.userRepository.findById(payload.sub);
+      const payload = await AuthHelper.verifyAccessToken(
+        this.jwtService,
+        token,
+      );
+      const user = await UserHelper.findUserById(this.prisma, payload.sub);
 
       if (!user) {
         throw new UnauthorizedException('User no longer exists');
       }
 
       // Attach sanitized user to request
-      (request as unknown as { user: unknown }).user = user.sanitize();
+      (request as unknown as { user: unknown }).user =
+        UserHelper.sanitizeUser(user);
       return true;
     } catch (err) {
       if (err instanceof UnauthorizedException) {

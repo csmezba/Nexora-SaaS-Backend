@@ -3,5 +3,6 @@ export * from './user.seed.js';
 export * from './permission.seed.js';
 export * from './organization.seed.js';
 export * from './role.seed.js';
+export * from './team.seed.js';
 export * from './auth.seed.js';
 export * from './seed.js';

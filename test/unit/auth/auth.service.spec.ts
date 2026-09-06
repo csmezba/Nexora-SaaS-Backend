@@ -5,71 +5,76 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { AuthService } from '../../../src/auth/auth.service.js';
-import { UserEntity } from '../../../src/user/domain/entities/user.entity.js';
-import { IUserRepository } from '../../../src/user/domain/repositories/user-repository.interface.js';
-import { IPasswordHasher } from '../../../src/auth/domain/services/password-hasher.interface.js';
-import { ITokenService } from '../../../src/auth/domain/services/token-service.interface.js';
+import { PrismaService } from '../../../src/prisma/prisma.service.js';
+import { JwtService } from '@nestjs/jwt';
+import * as UserHelper from '../../../src/user/user.helper.js';
+import * as AuthHelper from '../../../src/auth/auth.helper.js';
+
+vi.mock('../../../src/user/user.helper.js', () => ({
+  findUserById: vi.fn(),
+  findUserByPubId: vi.fn(),
+  findUserByEmail: vi.fn(),
+  createUser: vi.fn(),
+  updateUser: vi.fn(),
+  deleteUser: vi.fn(),
+  sanitizeUser: vi.fn((user) => ({
+    id: user.id,
+    pubId: user.pubId,
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    fullName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email,
+    createdAt: new Date(user.createdAt),
+    updatedAt: new Date(user.updatedAt),
+  })),
+}));
+
+vi.mock('../../../src/auth/auth.helper.js', () => ({
+  hashPassword: vi.fn(),
+  comparePassword: vi.fn(),
+  generateTokens: vi.fn(),
+  verifyAccessToken: vi.fn(),
+  verifyRefreshToken: vi.fn(),
+}));
 
 describe('AuthService', () => {
   let authService: AuthService;
-  let mockUserRepository: IUserRepository;
-  let mockPasswordHasher: IPasswordHasher;
-  let mockTokenService: ITokenService;
+  let mockPrisma: PrismaService;
+  let mockJwtService: JwtService;
 
-  const mockUserEntity = UserEntity.reconstitute({
+  const mockUserRecord = {
     id: 1,
+    pubId: 'usr_123',
     email: 'user@example.com',
     passwordHash: '$2a$10$hashedpw',
     firstName: 'John',
     lastName: 'Doe',
     refreshTokenHash: '$2a$10$hashedrefresh',
-    createdAt: new Date('2026-01-01'),
-    updatedAt: new Date('2026-01-01'),
-  });
+    createdAt: new Date('2026-01-01').toISOString(),
+    updatedAt: new Date('2026-01-01').toISOString(),
+  };
 
   beforeEach(() => {
-    mockUserRepository = {
-      findById: vi.fn(),
-      findByEmail: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-    };
-
-    mockPasswordHasher = {
-      hash: vi.fn(),
-      compare: vi.fn(),
-    };
-
-    mockTokenService = {
-      generateAccessToken: vi.fn(),
-      generateRefreshToken: vi.fn(),
-      generateTokens: vi.fn(),
-      verifyAccessToken: vi.fn(),
-      verifyRefreshToken: vi.fn(),
-    };
-
-    authService = new AuthService(
-      mockUserRepository,
-      mockPasswordHasher,
-      mockTokenService,
-    );
+    vi.clearAllMocks();
+    mockPrisma = {} as unknown as PrismaService;
+    mockJwtService = {} as unknown as JwtService;
+    authService = new AuthService(mockPrisma, mockJwtService);
   });
 
   describe('register', () => {
     it('should register a new user successfully and return tokens', async () => {
-      vi.mocked(mockUserRepository.findByEmail).mockResolvedValue(null);
-      vi.mocked(mockPasswordHasher.hash).mockImplementation(
+      vi.mocked(UserHelper.findUserByEmail).mockResolvedValue(null);
+      vi.mocked(AuthHelper.hashPassword).mockImplementation(
         async (val) => `hashed_${val}`,
       );
-      vi.mocked(mockUserRepository.create).mockResolvedValue(mockUserEntity);
-      vi.mocked(mockTokenService.generateTokens).mockResolvedValue({
+      vi.mocked(UserHelper.createUser).mockResolvedValue(mockUserRecord);
+      vi.mocked(AuthHelper.generateTokens).mockResolvedValue({
         accessToken: 'access.jwt.token',
         refreshToken: 'refresh.jwt.token',
         tokenType: 'Bearer',
         expiresIn: 3600,
       });
-      vi.mocked(mockUserRepository.update).mockResolvedValue(mockUserEntity);
+      vi.mocked(UserHelper.updateUser).mockResolvedValue(mockUserRecord);
 
       const result = await authService.register({
         email: 'user@example.com',
@@ -81,7 +86,7 @@ describe('AuthService', () => {
       expect(result.accessToken).toBe('access.jwt.token');
       expect(result.refreshToken).toBe('refresh.jwt.token');
       expect(result.user.email).toBe('user@example.com');
-      expect(mockUserRepository.create).toHaveBeenCalledWith({
+      expect(UserHelper.createUser).toHaveBeenCalledWith(mockPrisma, {
         email: 'user@example.com',
         passwordHash: 'hashed_Password123!',
         firstName: 'John',
@@ -90,9 +95,7 @@ describe('AuthService', () => {
     });
 
     it('should throw ConflictException if email is already taken', async () => {
-      vi.mocked(mockUserRepository.findByEmail).mockResolvedValue(
-        mockUserEntity,
-      );
+      vi.mocked(UserHelper.findUserByEmail).mockResolvedValue(mockUserRecord);
 
       await expect(
         authService.register({
@@ -105,18 +108,16 @@ describe('AuthService', () => {
 
   describe('login', () => {
     it('should login successfully with valid credentials', async () => {
-      vi.mocked(mockUserRepository.findByEmail).mockResolvedValue(
-        mockUserEntity,
-      );
-      vi.mocked(mockPasswordHasher.compare).mockResolvedValue(true);
-      vi.mocked(mockPasswordHasher.hash).mockResolvedValue('hashed_refresh');
-      vi.mocked(mockTokenService.generateTokens).mockResolvedValue({
+      vi.mocked(UserHelper.findUserByEmail).mockResolvedValue(mockUserRecord);
+      vi.mocked(AuthHelper.comparePassword).mockResolvedValue(true);
+      vi.mocked(AuthHelper.hashPassword).mockResolvedValue('hashed_refresh');
+      vi.mocked(AuthHelper.generateTokens).mockResolvedValue({
         accessToken: 'access.jwt.token',
         refreshToken: 'refresh.jwt.token',
         tokenType: 'Bearer',
         expiresIn: 3600,
       });
-      vi.mocked(mockUserRepository.update).mockResolvedValue(mockUserEntity);
+      vi.mocked(UserHelper.updateUser).mockResolvedValue(mockUserRecord);
 
       const result = await authService.login({
         email: 'user@example.com',
@@ -129,7 +130,7 @@ describe('AuthService', () => {
     });
 
     it('should throw UnauthorizedException if email does not exist', async () => {
-      vi.mocked(mockUserRepository.findByEmail).mockResolvedValue(null);
+      vi.mocked(UserHelper.findUserByEmail).mockResolvedValue(null);
 
       await expect(
         authService.login({
@@ -140,10 +141,8 @@ describe('AuthService', () => {
     });
 
     it('should throw UnauthorizedException if password does not match', async () => {
-      vi.mocked(mockUserRepository.findByEmail).mockResolvedValue(
-        mockUserEntity,
-      );
-      vi.mocked(mockPasswordHasher.compare).mockResolvedValue(false);
+      vi.mocked(UserHelper.findUserByEmail).mockResolvedValue(mockUserRecord);
+      vi.mocked(AuthHelper.comparePassword).mockResolvedValue(false);
 
       await expect(
         authService.login({
@@ -156,14 +155,14 @@ describe('AuthService', () => {
 
   describe('refreshToken', () => {
     it('should refresh tokens when valid refresh token is supplied', async () => {
-      vi.mocked(mockTokenService.verifyRefreshToken).mockResolvedValue({
+      vi.mocked(AuthHelper.verifyRefreshToken).mockResolvedValue({
         sub: 1,
         email: 'user@example.com',
       });
-      vi.mocked(mockUserRepository.findById).mockResolvedValue(mockUserEntity);
-      vi.mocked(mockPasswordHasher.compare).mockResolvedValue(true);
-      vi.mocked(mockPasswordHasher.hash).mockResolvedValue('new_hash');
-      vi.mocked(mockTokenService.generateTokens).mockResolvedValue({
+      vi.mocked(UserHelper.findUserById).mockResolvedValue(mockUserRecord);
+      vi.mocked(AuthHelper.comparePassword).mockResolvedValue(true);
+      vi.mocked(AuthHelper.hashPassword).mockResolvedValue('new_hash');
+      vi.mocked(AuthHelper.generateTokens).mockResolvedValue({
         accessToken: 'new.access.token',
         refreshToken: 'new.refresh.token',
         tokenType: 'Bearer',
@@ -179,12 +178,12 @@ describe('AuthService', () => {
     });
 
     it('should reject when refresh token hash does not match stored session', async () => {
-      vi.mocked(mockTokenService.verifyRefreshToken).mockResolvedValue({
+      vi.mocked(AuthHelper.verifyRefreshToken).mockResolvedValue({
         sub: 1,
         email: 'user@example.com',
       });
-      vi.mocked(mockUserRepository.findById).mockResolvedValue(mockUserEntity);
-      vi.mocked(mockPasswordHasher.compare).mockResolvedValue(false);
+      vi.mocked(UserHelper.findUserById).mockResolvedValue(mockUserRecord);
+      vi.mocked(AuthHelper.comparePassword).mockResolvedValue(false);
 
       await expect(
         authService.refreshToken({
@@ -196,11 +195,11 @@ describe('AuthService', () => {
 
   describe('logout', () => {
     it('should clear refresh token hash on logout', async () => {
-      vi.mocked(mockUserRepository.update).mockResolvedValue(mockUserEntity);
+      vi.mocked(UserHelper.updateUser).mockResolvedValue(mockUserRecord);
 
       const result = await authService.logout(1);
       expect(result).toBe(true);
-      expect(mockUserRepository.update).toHaveBeenCalledWith(1, {
+      expect(UserHelper.updateUser).toHaveBeenCalledWith(mockPrisma, 1, {
         refreshTokenHash: null,
       });
     });
@@ -208,7 +207,7 @@ describe('AuthService', () => {
 
   describe('getProfile', () => {
     it('should return sanitized user profile', async () => {
-      vi.mocked(mockUserRepository.findById).mockResolvedValue(mockUserEntity);
+      vi.mocked(UserHelper.findUserById).mockResolvedValue(mockUserRecord);
 
       const profile = await authService.getProfile(1);
       expect(profile.id).toBe(1);
@@ -216,7 +215,7 @@ describe('AuthService', () => {
     });
 
     it('should throw NotFoundException if user not found', async () => {
-      vi.mocked(mockUserRepository.findById).mockResolvedValue(null);
+      vi.mocked(UserHelper.findUserById).mockResolvedValue(null);
 
       await expect(authService.getProfile(99)).rejects.toThrowError(
         NotFoundException,

@@ -3,27 +3,14 @@ import {
   ConflictException,
   ForbiddenException,
   HttpException,
-  Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  ORGANIZATION_REPOSITORY,
-  type IOrganizationRepository,
-} from './domain/repositories/organization-repository.interface.js';
-import {
-  ORGANIZATION_MEMBER_REPOSITORY,
-  type IOrganizationMemberRepository,
-} from './domain/repositories/organization-member-repository.interface.js';
-import {
-  USER_REPOSITORY,
-  type IUserRepository,
-} from '../user/domain/repositories/user-repository.interface.js';
-import { OrganizationRole } from './domain/enums/organization-role.enum.js';
-import { OrganizationEntity } from './domain/entities/organization.entity.js';
-import { UserEntity } from '../user/domain/entities/user.entity.js';
+import { PrismaService } from '../prisma/prisma.service.js';
+import { OrganizationRole } from './enums/organization-role.enum.js';
+import { generatePubId } from '../common/utils/unique-id.util.js';
 import {
   CreateOrganizationInput,
   DeleteOrganizationResponseDto,
@@ -37,102 +24,68 @@ import {
   RemoveMemberInput,
   UpdateMemberRoleInput,
 } from './dto/organization-member.dto.js';
+import { UserResponseDto } from '../auth/dto/auth.dto.js';
+import * as OrgHelper from './organization.helper.js';
+import * as UserHelper from '../user/user.helper.js';
+import type { PrismaUserRecord } from '../user/types/user.types.js';
 
 @Injectable()
 export class OrganizationService {
   private readonly logger = new Logger(OrganizationService.name);
 
-  constructor(
-    @Inject(ORGANIZATION_REPOSITORY)
-    private readonly orgRepository: IOrganizationRepository,
-    @Inject(ORGANIZATION_MEMBER_REPOSITORY)
-    private readonly memberRepository: IOrganizationMemberRepository,
-    @Inject(USER_REPOSITORY)
-    private readonly userRepository: IUserRepository,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  public async resolveOrganization(identifier: string): Promise<OrganizationEntity> {
-    try {
-      const trimmed = identifier.trim();
-      if (trimmed.startsWith('org_')) {
-        const byPubId = await this.orgRepository.findByPubId(trimmed);
-        if (byPubId) return byPubId;
-      }
-      const bySlug = await this.orgRepository.findBySlug(trimmed.toLowerCase());
-      if (bySlug) return bySlug;
-
-      const byPubId = await this.orgRepository.findByPubId(trimmed);
-      if (byPubId) return byPubId;
-
-      throw new NotFoundException(`Organization '${identifier}' not found`);
-    } catch (error) {
-      if (error instanceof HttpException) {
-        throw error;
-      }
-      this.logger.error(`Error in resolveOrganization: ${error instanceof Error ? error.message : String(error)}`);
-      throw new InternalServerErrorException(
-        error instanceof Error ? error.message : 'An error occurred while resolving organization',
-      );
-    }
-  }
-
-  public async resolveUser(identifier: string): Promise<UserEntity> {
-    try {
-      const str = identifier.trim();
-      if (str.includes('@')) {
-        const user = await this.userRepository.findByEmail(str);
-        if (user) return user;
-      }
-      if (str.startsWith('usr_')) {
-        const user = await this.userRepository.findByPubId(str);
-        if (user) return user;
-      }
-      const userByPubId = await this.userRepository.findByPubId(str);
-      if (userByPubId) return userByPubId;
-
-      const userByEmail = await this.userRepository.findByEmail(str);
-      if (userByEmail) return userByEmail;
-
-      throw new NotFoundException(`User '${identifier}' not found`);
-    } catch (error) {
-      if (error instanceof HttpException) {
-        throw error;
-      }
-      this.logger.error(`Error in resolveUser: ${error instanceof Error ? error.message : String(error)}`);
-      throw new InternalServerErrorException(
-        error instanceof Error ? error.message : 'An error occurred while resolving user',
-      );
-    }
-  }
+  // --- Organization Operations ---
 
   async createOrganization(
     userId: number,
     input: CreateOrganizationInput,
   ): Promise<OrganizationResponseDto> {
     try {
+      const orgModel = OrgHelper.getOrgModel(this.prisma);
+      const memberModel = OrgHelper.getMemberModel(this.prisma);
       const slug = input.slug.toLowerCase().trim();
-      const existing = await this.orgRepository.findBySlug(slug);
+
+      const existing = await orgModel
+        .where((o: { slug: { eq: (val: string) => unknown } }) =>
+          o.slug.eq(slug),
+        )
+        .first();
+
       if (existing) {
         throw new ConflictException(
           `Organization slug '${slug}' is already taken`,
         );
       }
 
-      const org = await this.orgRepository.create({
-        name: input.name,
+      const now = new Date().toISOString();
+      const org = await orgModel.create({
+        pubId: generatePubId('org'),
+        name: input.name?.trim() || null,
         slug,
-        logoUrl: input.logoUrl,
-        description: input.description,
+        logoUrl: input.logoUrl ?? null,
+        description: input.description ?? null,
+        createdAt: now,
+        updatedAt: now,
       });
 
-      await this.memberRepository.create({
+      await memberModel.create({
+        pubId: generatePubId('mem'),
         organizationId: org.id,
         userId,
         role: OrganizationRole.OWNER,
+        joinedAt: now,
       });
 
       return {
-        ...org.sanitize(),
+        id: org.id,
+        pubId: org.pubId,
+        name: org.name ?? null,
+        slug: org.slug,
+        logoUrl: org.logoUrl ?? null,
+        description: org.description ?? null,
+        createdAt: new Date(org.createdAt),
+        updatedAt: new Date(org.updatedAt),
         memberCount: 1,
         currentUserRole: OrganizationRole.OWNER,
       };
@@ -140,9 +93,13 @@ export class OrganizationService {
       if (error instanceof HttpException) {
         throw error;
       }
-      this.logger.error(`Error in createOrganization: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(
+        `Error in createOrganization: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new InternalServerErrorException(
-        error instanceof Error ? error.message : 'An error occurred while creating organization',
+        error instanceof Error
+          ? error.message
+          : 'An error occurred while creating organization',
       );
     }
   }
@@ -152,16 +109,25 @@ export class OrganizationService {
     userId?: number,
   ): Promise<OrganizationResponseDto> {
     try {
-      const org = await this.orgRepository.findByPubId(pubId.trim());
+      const orgModel = OrgHelper.getOrgModel(this.prisma);
+      const org = await orgModel
+        .where((o: { pubId: { eq: (val: string) => unknown } }) =>
+          o.pubId.eq(pubId.trim()),
+        )
+        .first();
+
       if (!org) {
-        throw new NotFoundException(`Organization with pubId '${pubId}' not found`);
+        throw new NotFoundException(
+          `Organization with pubId '${pubId}' not found`,
+        );
       }
 
-      const memberCount = await this.memberRepository.countByOrg(org.id);
+      const memberCount = await OrgHelper.countMembers(this.prisma, org.id);
       let currentUserRole: OrganizationRole | undefined;
 
       if (userId) {
-        const membership = await this.memberRepository.findByOrgAndUser(
+        const membership = await OrgHelper.findByOrgAndUser(
+          this.prisma,
           org.id,
           userId,
         );
@@ -169,7 +135,14 @@ export class OrganizationService {
       }
 
       return {
-        ...org.sanitize(),
+        id: org.id,
+        pubId: org.pubId,
+        name: org.name ?? null,
+        slug: org.slug,
+        logoUrl: org.logoUrl ?? null,
+        description: org.description ?? null,
+        createdAt: new Date(org.createdAt),
+        updatedAt: new Date(org.updatedAt),
         memberCount,
         currentUserRole,
       };
@@ -177,9 +150,13 @@ export class OrganizationService {
       if (error instanceof HttpException) {
         throw error;
       }
-      this.logger.error(`Error in getOrganizationByPubId: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(
+        `Error in getOrganizationByPubId: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new InternalServerErrorException(
-        error instanceof Error ? error.message : 'An error occurred while fetching organization by pubId',
+        error instanceof Error
+          ? error.message
+          : 'An error occurred while fetching organization by pubId',
       );
     }
   }
@@ -189,16 +166,25 @@ export class OrganizationService {
     userId?: number,
   ): Promise<OrganizationResponseDto> {
     try {
-      const org = await this.orgRepository.findBySlug(slug.toLowerCase().trim());
+      const orgModel = OrgHelper.getOrgModel(this.prisma);
+      const org = await orgModel
+        .where((o: { slug: { eq: (val: string) => unknown } }) =>
+          o.slug.eq(slug.toLowerCase().trim()),
+        )
+        .first();
+
       if (!org) {
-        throw new NotFoundException(`Organization with slug '${slug}' not found`);
+        throw new NotFoundException(
+          `Organization with slug '${slug}' not found`,
+        );
       }
 
-      const memberCount = await this.memberRepository.countByOrg(org.id);
+      const memberCount = await OrgHelper.countMembers(this.prisma, org.id);
       let currentUserRole: OrganizationRole | undefined;
 
       if (userId) {
-        const membership = await this.memberRepository.findByOrgAndUser(
+        const membership = await OrgHelper.findByOrgAndUser(
+          this.prisma,
           org.id,
           userId,
         );
@@ -206,7 +192,14 @@ export class OrganizationService {
       }
 
       return {
-        ...org.sanitize(),
+        id: org.id,
+        pubId: org.pubId,
+        name: org.name ?? null,
+        slug: org.slug,
+        logoUrl: org.logoUrl ?? null,
+        description: org.description ?? null,
+        createdAt: new Date(org.createdAt),
+        updatedAt: new Date(org.updatedAt),
         memberCount,
         currentUserRole,
       };
@@ -214,9 +207,13 @@ export class OrganizationService {
       if (error instanceof HttpException) {
         throw error;
       }
-      this.logger.error(`Error in getOrganizationBySlug: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(
+        `Error in getOrganizationBySlug: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new InternalServerErrorException(
-        error instanceof Error ? error.message : 'An error occurred while fetching organization by slug',
+        error instanceof Error
+          ? error.message
+          : 'An error occurred while fetching organization by slug',
       );
     }
   }
@@ -226,12 +223,13 @@ export class OrganizationService {
     userId?: number,
   ): Promise<OrganizationResponseDto> {
     try {
-      const org = await this.resolveOrganization(identifier);
-      const memberCount = await this.memberRepository.countByOrg(org.id);
+      const org = await OrgHelper.resolveOrganization(this.prisma, identifier);
+      const memberCount = await OrgHelper.countMembers(this.prisma, org.id);
       let currentUserRole: OrganizationRole | undefined;
 
       if (userId) {
-        const membership = await this.memberRepository.findByOrgAndUser(
+        const membership = await OrgHelper.findByOrgAndUser(
+          this.prisma,
           org.id,
           userId,
         );
@@ -239,7 +237,14 @@ export class OrganizationService {
       }
 
       return {
-        ...org.sanitize(),
+        id: org.id,
+        pubId: org.pubId,
+        name: org.name ?? null,
+        slug: org.slug,
+        logoUrl: org.logoUrl ?? null,
+        description: org.description ?? null,
+        createdAt: new Date(org.createdAt),
+        updatedAt: new Date(org.updatedAt),
         memberCount,
         currentUserRole,
       };
@@ -247,9 +252,13 @@ export class OrganizationService {
       if (error instanceof HttpException) {
         throw error;
       }
-      this.logger.error(`Error in getOrganization: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(
+        `Error in getOrganization: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new InternalServerErrorException(
-        error instanceof Error ? error.message : 'An error occurred while fetching organization',
+        error instanceof Error
+          ? error.message
+          : 'An error occurred while fetching organization',
       );
     }
   }
@@ -258,20 +267,36 @@ export class OrganizationService {
     userId: number,
   ): Promise<OrganizationResponseDto[]> {
     try {
-      const orgs = await this.orgRepository.findAllByUserId(userId);
+      const orgModel = OrgHelper.getOrgModel(this.prisma);
+      const memberModel = OrgHelper.getMemberModel(this.prisma);
+
+      const userMemberships = await memberModel
+        .where((m: { userId: { eq: (val: number) => unknown } }) =>
+          m.userId.eq(userId),
+        )
+        .all();
+
       const results: OrganizationResponseDto[] = [];
 
-      for (const org of orgs) {
-        const memberCount = await this.memberRepository.countByOrg(org.id);
-        const membership = await this.memberRepository.findByOrgAndUser(
-          org.id,
-          userId,
-        );
-        results.push({
-          ...org.sanitize(),
-          memberCount,
-          currentUserRole: membership?.role,
+      for (const membership of userMemberships || []) {
+        const org = await orgModel.first({
+          id: membership.organizationId,
         });
+        if (org) {
+          const memberCount = await OrgHelper.countMembers(this.prisma, org.id);
+          results.push({
+            id: org.id,
+            pubId: org.pubId,
+            name: org.name ?? null,
+            slug: org.slug,
+            logoUrl: org.logoUrl ?? null,
+            description: org.description ?? null,
+            createdAt: new Date(org.createdAt),
+            updatedAt: new Date(org.updatedAt),
+            memberCount,
+            currentUserRole: membership.role,
+          });
+        }
       }
 
       return results;
@@ -279,9 +304,13 @@ export class OrganizationService {
       if (error instanceof HttpException) {
         throw error;
       }
-      this.logger.error(`Error in getUserOrganizations: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(
+        `Error in getUserOrganizations: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new InternalServerErrorException(
-        error instanceof Error ? error.message : 'An error occurred while fetching user organizations',
+        error instanceof Error
+          ? error.message
+          : 'An error occurred while fetching user organizations',
       );
     }
   }
@@ -292,9 +321,14 @@ export class OrganizationService {
     input: UpdateOrganizationInput,
   ): Promise<OrganizationResponseDto> {
     try {
-      const org = await this.resolveOrganization(orgIdentifier);
+      const orgModel = OrgHelper.getOrgModel(this.prisma);
+      const org = await OrgHelper.resolveOrganization(
+        this.prisma,
+        orgIdentifier,
+      );
 
-      const membership = await this.memberRepository.findByOrgAndUser(
+      const membership = await OrgHelper.findByOrgAndUser(
+        this.prisma,
         org.id,
         userId,
       );
@@ -311,7 +345,12 @@ export class OrganizationService {
       if (input.slug) {
         const newSlug = input.slug.toLowerCase().trim();
         if (newSlug !== org.slug) {
-          const existing = await this.orgRepository.findBySlug(newSlug);
+          const existing = await orgModel
+            .where((o: { slug: { eq: (val: string) => unknown } }) =>
+              o.slug.eq(newSlug),
+            )
+            .first();
+
           if (existing) {
             throw new ConflictException(
               `Organization slug '${newSlug}' is already taken`,
@@ -320,17 +359,34 @@ export class OrganizationService {
         }
       }
 
-      const updated = await this.orgRepository.update(org.id, {
-        name: input.name,
-        slug: input.slug,
-        logoUrl: input.logoUrl,
-        description: input.description,
-      });
+      const updatePayload: Record<string, unknown> = {};
+      if (input.name !== undefined) updatePayload['name'] = input.name;
+      if (input.slug !== undefined)
+        updatePayload['slug'] = input.slug.toLowerCase().trim();
+      if (input.logoUrl !== undefined)
+        updatePayload['logoUrl'] = input.logoUrl;
+      if (input.description !== undefined)
+        updatePayload['description'] = input.description;
+      updatePayload['updatedAt'] = new Date().toISOString();
 
-      const memberCount = await this.memberRepository.countByOrg(org.id);
+      await orgModel.where({ id: org.id }).update(updatePayload);
+
+      const updated = await orgModel.first({ id: org.id });
+      if (!updated) {
+        throw new NotFoundException('Organization not found after update');
+      }
+
+      const memberCount = await OrgHelper.countMembers(this.prisma, org.id);
 
       return {
-        ...updated.sanitize(),
+        id: updated.id,
+        pubId: updated.pubId,
+        name: updated.name ?? null,
+        slug: updated.slug,
+        logoUrl: updated.logoUrl ?? null,
+        description: updated.description ?? null,
+        createdAt: new Date(updated.createdAt),
+        updatedAt: new Date(updated.updatedAt),
         memberCount,
         currentUserRole: membership.role,
       };
@@ -338,9 +394,13 @@ export class OrganizationService {
       if (error instanceof HttpException) {
         throw error;
       }
-      this.logger.error(`Error in updateOrganization: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(
+        `Error in updateOrganization: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new InternalServerErrorException(
-        error instanceof Error ? error.message : 'An error occurred while updating organization',
+        error instanceof Error
+          ? error.message
+          : 'An error occurred while updating organization',
       );
     }
   }
@@ -350,9 +410,14 @@ export class OrganizationService {
     userId: number,
   ): Promise<DeleteOrganizationResponseDto> {
     try {
-      const org = await this.resolveOrganization(orgIdentifier);
+      const orgModel = OrgHelper.getOrgModel(this.prisma);
+      const org = await OrgHelper.resolveOrganization(
+        this.prisma,
+        orgIdentifier,
+      );
 
-      const membership = await this.memberRepository.findByOrgAndUser(
+      const membership = await OrgHelper.findByOrgAndUser(
+        this.prisma,
         org.id,
         userId,
       );
@@ -362,7 +427,7 @@ export class OrganizationService {
         );
       }
 
-      await this.orgRepository.delete(org.id);
+      await orgModel.where({ id: org.id }).delete();
 
       return {
         success: true,
@@ -372,20 +437,31 @@ export class OrganizationService {
       if (error instanceof HttpException) {
         throw error;
       }
-      this.logger.error(`Error in deleteOrganization: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(
+        `Error in deleteOrganization: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new InternalServerErrorException(
-        error instanceof Error ? error.message : 'An error occurred while deleting organization',
+        error instanceof Error
+          ? error.message
+          : 'An error occurred while deleting organization',
       );
     }
   }
+
+  // --- Member Operations ---
 
   async listMembers(
     orgIdentifier: string,
     userId: number,
   ): Promise<OrganizationMemberResponseDto[]> {
     try {
-      const org = await this.resolveOrganization(orgIdentifier);
-      const membership = await this.memberRepository.findByOrgAndUser(
+      const memberModel = OrgHelper.getMemberModel(this.prisma);
+      const org = await OrgHelper.resolveOrganization(
+        this.prisma,
+        orgIdentifier,
+      );
+      const membership = await OrgHelper.findByOrgAndUser(
+        this.prisma,
         org.id,
         userId,
       );
@@ -395,20 +471,39 @@ export class OrganizationService {
         );
       }
 
-      const membersWithUsers =
-        await this.memberRepository.findMembersWithUsers(org.id);
+      const members = await memberModel
+        .where(
+          (m: { organizationId: { eq: (val: number) => unknown } }) =>
+            m.organizationId.eq(org.id),
+        )
+        .all();
 
-      return membersWithUsers.map(({ member, user }) => ({
-        ...member.sanitize(),
-        user: user.sanitize(),
-      }));
+      const results: OrganizationMemberResponseDto[] = [];
+      for (const m of members || []) {
+        const user = await UserHelper.findUserById(this.prisma, m.userId);
+        results.push({
+          id: m.id,
+          pubId: m.pubId,
+          organizationId: m.organizationId,
+          userId: m.userId,
+          role: m.role,
+          joinedAt: new Date(m.joinedAt),
+          user: user ? this.toUserResponse(user) : undefined,
+        });
+      }
+
+      return results;
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
       }
-      this.logger.error(`Error in listMembers: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(
+        `Error in listMembers: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new InternalServerErrorException(
-        error instanceof Error ? error.message : 'An error occurred while listing organization members',
+        error instanceof Error
+          ? error.message
+          : 'An error occurred while listing organization members',
       );
     }
   }
@@ -418,9 +513,14 @@ export class OrganizationService {
     input: AddOrganizationMemberInput,
   ): Promise<MemberActionResponseDto> {
     try {
-      const org = await this.resolveOrganization(input.organizationId);
+      const memberModel = OrgHelper.getMemberModel(this.prisma);
+      const org = await OrgHelper.resolveOrganization(
+        this.prisma,
+        input.organizationId,
+      );
 
-      const callerMembership = await this.memberRepository.findByOrgAndUser(
+      const callerMembership = await OrgHelper.findByOrgAndUser(
+        this.prisma,
         org.id,
         currentUserId,
       );
@@ -434,11 +534,14 @@ export class OrganizationService {
         );
       }
 
-      let targetUser: UserEntity | null = null;
+      let targetUser: PrismaUserRecord | null = null;
       if (input.userId) {
-        targetUser = await this.resolveUser(input.userId);
+        targetUser = await OrgHelper.resolveUser(
+          this.prisma,
+          input.userId,
+        );
       } else if (input.email) {
-        targetUser = await this.userRepository.findByEmail(input.email);
+        targetUser = await UserHelper.findUserByEmail(this.prisma, input.email);
       } else {
         throw new BadRequestException(
           'Either userId or email must be provided to add a member',
@@ -449,7 +552,8 @@ export class OrganizationService {
         throw new NotFoundException('User not found');
       }
 
-      const existingMember = await this.memberRepository.findByOrgAndUser(
+      const existingMember = await OrgHelper.findByOrgAndUser(
+        this.prisma,
         org.id,
         targetUser.id,
       );
@@ -467,27 +571,39 @@ export class OrganizationService {
         throw new ForbiddenException('Only an owner can grant the OWNER role');
       }
 
-      const newMember = await this.memberRepository.create({
+      const now = new Date().toISOString();
+      const newMember = await memberModel.create({
+        pubId: generatePubId('mem'),
         organizationId: org.id,
         userId: targetUser.id,
         role,
+        joinedAt: now,
       });
 
       return {
         success: true,
         message: `User '${targetUser.email}' added to organization successfully`,
         member: {
-          ...newMember.sanitize(),
-          user: targetUser.sanitize(),
+          id: newMember.id,
+          pubId: newMember.pubId,
+          organizationId: newMember.organizationId,
+          userId: newMember.userId,
+          role: newMember.role,
+          joinedAt: new Date(newMember.joinedAt),
+          user: this.toUserResponse(targetUser),
         },
       };
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
       }
-      this.logger.error(`Error in addMember: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(
+        `Error in addMember: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new InternalServerErrorException(
-        error instanceof Error ? error.message : 'An error occurred while adding organization member',
+        error instanceof Error
+          ? error.message
+          : 'An error occurred while adding organization member',
       );
     }
   }
@@ -497,9 +613,14 @@ export class OrganizationService {
     input: UpdateMemberRoleInput,
   ): Promise<MemberActionResponseDto> {
     try {
-      const org = await this.resolveOrganization(input.organizationId);
+      const memberModel = OrgHelper.getMemberModel(this.prisma);
+      const org = await OrgHelper.resolveOrganization(
+        this.prisma,
+        input.organizationId,
+      );
 
-      const callerMembership = await this.memberRepository.findByOrgAndUser(
+      const callerMembership = await OrgHelper.findByOrgAndUser(
+        this.prisma,
         org.id,
         currentUserId,
       );
@@ -513,8 +634,12 @@ export class OrganizationService {
         );
       }
 
-      const targetUser = await this.resolveUser(input.userId);
-      const targetMember = await this.memberRepository.findByOrgAndUser(
+      const targetUser = await OrgHelper.resolveUser(
+        this.prisma,
+        input.userId,
+      );
+      const targetMember = await OrgHelper.findByOrgAndUser(
+        this.prisma,
         org.id,
         targetUser.id,
       );
@@ -539,9 +664,16 @@ export class OrganizationService {
         targetMember.role === OrganizationRole.OWNER &&
         input.role !== OrganizationRole.OWNER
       ) {
-        const ownerCount = await this.memberRepository.countOwnersByOrg(
-          org.id,
-        );
+        const allMembers = await memberModel
+          .where(
+            (m: { organizationId: { eq: (val: number) => unknown } }) =>
+              m.organizationId.eq(org.id),
+          )
+          .all();
+        const ownerCount = (allMembers || []).filter(
+          (m) => m.role === OrganizationRole.OWNER,
+        ).length;
+
         if (ownerCount <= 1) {
           throw new BadRequestException(
             'Cannot demote the only Owner of the organization. Transfer ownership or assign another Owner first.',
@@ -549,26 +681,34 @@ export class OrganizationService {
         }
       }
 
-      const updated = await this.memberRepository.updateRole(
-        targetMember.id,
-        input.role,
-      );
+      await memberModel
+        .where({ id: targetMember.id })
+        .update({ role: input.role });
 
       return {
         success: true,
         message: `Member role updated to ${input.role} successfully`,
         member: {
-          ...updated.sanitize(),
-          user: targetUser.sanitize(),
+          id: targetMember.id,
+          pubId: targetMember.pubId,
+          organizationId: targetMember.organizationId,
+          userId: targetMember.userId,
+          role: input.role,
+          joinedAt: new Date(targetMember.joinedAt),
+          user: this.toUserResponse(targetUser),
         },
       };
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
       }
-      this.logger.error(`Error in updateMemberRole: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(
+        `Error in updateMemberRole: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new InternalServerErrorException(
-        error instanceof Error ? error.message : 'An error occurred while updating member role',
+        error instanceof Error
+          ? error.message
+          : 'An error occurred while updating member role',
       );
     }
   }
@@ -578,18 +718,29 @@ export class OrganizationService {
     input: RemoveMemberInput,
   ): Promise<MemberActionResponseDto> {
     try {
-      const org = await this.resolveOrganization(input.organizationId);
+      const memberModel = OrgHelper.getMemberModel(this.prisma);
+      const org = await OrgHelper.resolveOrganization(
+        this.prisma,
+        input.organizationId,
+      );
 
-      const callerMembership = await this.memberRepository.findByOrgAndUser(
+      const callerMembership = await OrgHelper.findByOrgAndUser(
+        this.prisma,
         org.id,
         currentUserId,
       );
       if (!callerMembership) {
-        throw new ForbiddenException('You are not a member of this organization');
+        throw new ForbiddenException(
+          'You are not a member of this organization',
+        );
       }
 
-      const targetUser = await this.resolveUser(input.userId);
-      const targetMember = await this.memberRepository.findByOrgAndUser(
+      const targetUser = await OrgHelper.resolveUser(
+        this.prisma,
+        input.userId,
+      );
+      const targetMember = await OrgHelper.findByOrgAndUser(
+        this.prisma,
         org.id,
         targetUser.id,
       );
@@ -621,9 +772,16 @@ export class OrganizationService {
       }
 
       if (targetMember.role === OrganizationRole.OWNER) {
-        const ownerCount = await this.memberRepository.countOwnersByOrg(
-          org.id,
-        );
+        const allMembers = await memberModel
+          .where(
+            (m: { organizationId: { eq: (val: number) => unknown } }) =>
+              m.organizationId.eq(org.id),
+          )
+          .all();
+        const ownerCount = (allMembers || []).filter(
+          (m) => m.role === OrganizationRole.OWNER,
+        ).length;
+
         if (ownerCount <= 1) {
           throw new BadRequestException(
             'Cannot remove the sole Owner of the organization. Transfer ownership or delete the organization.',
@@ -631,7 +789,7 @@ export class OrganizationService {
         }
       }
 
-      await this.memberRepository.delete(targetMember.id);
+      await memberModel.where({ id: targetMember.id }).delete();
 
       return {
         success: true,
@@ -643,9 +801,13 @@ export class OrganizationService {
       if (error instanceof HttpException) {
         throw error;
       }
-      this.logger.error(`Error in removeMember: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(
+        `Error in removeMember: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new InternalServerErrorException(
-        error instanceof Error ? error.message : 'An error occurred while removing member',
+        error instanceof Error
+          ? error.message
+          : 'An error occurred while removing member',
       );
     }
   }
@@ -655,7 +817,7 @@ export class OrganizationService {
     organizationPubId: string,
   ): Promise<MemberActionResponseDto> {
     try {
-      const user = await this.userRepository.findById(userId);
+      const user = await UserHelper.findUserById(this.prisma, userId);
       return await this.removeMember(userId, {
         organizationId: organizationPubId,
         userId: user?.pubId ?? String(userId),
@@ -664,10 +826,31 @@ export class OrganizationService {
       if (error instanceof HttpException) {
         throw error;
       }
-      this.logger.error(`Error in leaveOrganization: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(
+        `Error in leaveOrganization: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new InternalServerErrorException(
-        error instanceof Error ? error.message : 'An error occurred while leaving organization',
+        error instanceof Error
+          ? error.message
+          : 'An error occurred while leaving organization',
       );
     }
+  }
+
+  private toUserResponse(user: PrismaUserRecord): UserResponseDto {
+    const firstName = user.firstName ?? null;
+    const lastName = user.lastName ?? null;
+    const parts = [firstName, lastName].filter(Boolean);
+    const fullName = parts.length > 0 ? parts.join(' ') : user.email;
+
+    return {
+      pubId: user.pubId,
+      email: user.email,
+      firstName,
+      lastName,
+      fullName,
+      createdAt: new Date(user.createdAt),
+      updatedAt: new Date(user.updatedAt),
+    };
   }
 }

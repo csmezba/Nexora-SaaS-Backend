@@ -12,7 +12,7 @@ import {
 import { Public } from './decorators/public.decorator.js';
 import { CurrentUser } from './decorators/current-user.decorator.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
-import type { SanitizedUser } from '../user/domain/entities/user.entity.js';
+import type { SanitizedUser } from '../user/types/user.types.js';
 
 @Resolver()
 @UseGuards(JwtAuthGuard)

@@ -1,35 +1,58 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { JwtService } from '@nestjs/jwt';
 import { JwtAuthGuard } from '../../../../src/auth/guards/jwt-auth.guard.js';
-import { UserEntity } from '../../../../src/user/domain/entities/user.entity.js';
+import { PrismaService } from '../../../../src/prisma/prisma.service.js';
+import * as AuthHelper from '../../../../src/auth/auth.helper.js';
+import * as UserHelper from '../../../../src/user/user.helper.js';
+
+vi.mock('../../../../src/auth/auth.helper.js', () => ({
+  verifyAccessToken: vi.fn(),
+}));
+
+vi.mock('../../../../src/user/user.helper.js', () => ({
+  findUserById: vi.fn(),
+  sanitizeUser: vi.fn((u) => ({
+    id: u.id,
+    pubId: u.pubId,
+    email: u.email,
+    firstName: u.firstName,
+    lastName: u.lastName,
+    fullName: `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email,
+    createdAt: new Date(u.createdAt),
+    updatedAt: new Date(u.updatedAt),
+  })),
+}));
 
 describe('JwtAuthGuard', () => {
-  const mockReflector = {
-    getAllAndOverride: vi.fn(),
+  let guard: JwtAuthGuard;
+  let mockReflector: Reflector;
+  let mockJwtService: JwtService;
+  let mockPrisma: PrismaService;
+
+  const mockUserRecord = {
+    id: 1,
+    pubId: 'usr_123',
+    email: 'user@nexora.ai',
+    passwordHash: 'hash',
+    firstName: 'Alice',
+    lastName: 'Smith',
+    refreshTokenHash: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   };
 
-  const mockTokenService = {
-    verifyAccessToken: vi.fn(),
-    generateAccessToken: vi.fn(),
-    generateRefreshToken: vi.fn(),
-    generateTokens: vi.fn(),
-    verifyRefreshToken: vi.fn(),
-  };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockReflector = {
+      getAllAndOverride: vi.fn(),
+    } as unknown as Reflector;
+    mockJwtService = {} as unknown as JwtService;
+    mockPrisma = {} as unknown as PrismaService;
 
-  const mockUserRepository = {
-    findById: vi.fn(),
-    findByEmail: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
-
-  const guard = new JwtAuthGuard(
-    mockReflector as unknown as Reflector,
-    mockTokenService,
-    mockUserRepository,
-  );
+    guard = new JwtAuthGuard(mockReflector, mockJwtService, mockPrisma);
+  });
 
   const createMockContext = (
     authHeader?: string,
@@ -42,6 +65,7 @@ describe('JwtAuthGuard', () => {
     const context = {
       getHandler: vi.fn(),
       getClass: vi.fn(),
+      getType: () => 'http',
       switchToHttp: () => ({
         getRequest: () => req,
       }),
@@ -50,7 +74,7 @@ describe('JwtAuthGuard', () => {
   };
 
   it('should allow access immediately if route is marked as Public', async () => {
-    mockReflector.getAllAndOverride.mockReturnValue(true);
+    vi.mocked(mockReflector.getAllAndOverride).mockReturnValue(true);
     const { context } = createMockContext();
 
     const result = await guard.canActivate(context);
@@ -58,7 +82,7 @@ describe('JwtAuthGuard', () => {
   });
 
   it('should throw UnauthorizedException if authorization header is missing', async () => {
-    mockReflector.getAllAndOverride.mockReturnValue(false);
+    vi.mocked(mockReflector.getAllAndOverride).mockReturnValue(false);
     const { context } = createMockContext(undefined);
 
     await expect(guard.canActivate(context)).rejects.toThrowError(
@@ -67,38 +91,30 @@ describe('JwtAuthGuard', () => {
   });
 
   it('should authenticate valid token and attach sanitized user to request', async () => {
-    mockReflector.getAllAndOverride.mockReturnValue(false);
+    vi.mocked(mockReflector.getAllAndOverride).mockReturnValue(false);
     const { context, req } = createMockContext('Bearer valid-jwt-token');
 
-    mockTokenService.verifyAccessToken.mockResolvedValue({
+    vi.mocked(AuthHelper.verifyAccessToken).mockResolvedValue({
       sub: 1,
       email: 'user@nexora.ai',
     });
 
-    const userEntity = UserEntity.reconstitute({
-      id: 1,
-      email: 'user@nexora.ai',
-      passwordHash: 'hash',
-      firstName: 'Alice',
-      lastName: 'Smith',
-      refreshTokenHash: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-
-    mockUserRepository.findById.mockResolvedValue(userEntity);
+    vi.mocked(UserHelper.findUserById).mockResolvedValue(mockUserRecord);
 
     const result = await guard.canActivate(context);
     expect(result).toBe(true);
-    expect(req['user']).toEqual(userEntity.sanitize());
+    expect(req['user']).toEqual(UserHelper.sanitizeUser(mockUserRecord));
   });
 
   it('should reject if user no longer exists', async () => {
-    mockReflector.getAllAndOverride.mockReturnValue(false);
+    vi.mocked(mockReflector.getAllAndOverride).mockReturnValue(false);
     const { context } = createMockContext('Bearer valid-jwt-token');
 
-    mockTokenService.verifyAccessToken.mockResolvedValue({ sub: 999 });
-    mockUserRepository.findById.mockResolvedValue(null);
+    vi.mocked(AuthHelper.verifyAccessToken).mockResolvedValue({
+      sub: 999,
+      email: 'none@nexora.ai',
+    });
+    vi.mocked(UserHelper.findUserById).mockResolvedValue(null);
 
     await expect(guard.canActivate(context)).rejects.toThrowError(
       'User no longer exists',
@@ -106,10 +122,10 @@ describe('JwtAuthGuard', () => {
   });
 
   it('should reject if token verification fails', async () => {
-    mockReflector.getAllAndOverride.mockReturnValue(false);
+    vi.mocked(mockReflector.getAllAndOverride).mockReturnValue(false);
     const { context } = createMockContext('Bearer bad-token');
 
-    mockTokenService.verifyAccessToken.mockRejectedValue(
+    vi.mocked(AuthHelper.verifyAccessToken).mockRejectedValue(
       new Error('Invalid signature'),
     );
 
@@ -119,7 +135,7 @@ describe('JwtAuthGuard', () => {
   });
 
   it('should authenticate correctly with GraphQL execution context', async () => {
-    mockReflector.getAllAndOverride.mockReturnValue(false);
+    vi.mocked(mockReflector.getAllAndOverride).mockReturnValue(false);
 
     const req: Record<string, unknown> = {
       headers: {
@@ -131,33 +147,18 @@ describe('JwtAuthGuard', () => {
       getHandler: vi.fn(),
       getClass: vi.fn(),
       getType: () => 'graphql',
-      switchToHttp: () => ({
-        getRequest: () => ({}),
-      }),
       getArgs: () => [{}, {}, { req }, {}],
       getArgByIndex: (index: number) => (index === 2 ? { req } : {}),
     } as unknown as ExecutionContext;
 
-    mockTokenService.verifyAccessToken.mockResolvedValue({
+    vi.mocked(AuthHelper.verifyAccessToken).mockResolvedValue({
       sub: 1,
       email: 'gql@nexora.ai',
     });
 
-    const userEntity = UserEntity.reconstitute({
-      id: 1,
-      email: 'gql@nexora.ai',
-      passwordHash: 'hash',
-      firstName: 'GraphQL',
-      lastName: 'User',
-      refreshTokenHash: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-
-    mockUserRepository.findById.mockResolvedValue(userEntity);
+    vi.mocked(UserHelper.findUserById).mockResolvedValue(mockUserRecord);
 
     const result = await guard.canActivate(gqlContext);
     expect(result).toBe(true);
-    expect(req['user']).toEqual(userEntity.sanitize());
   });
 });

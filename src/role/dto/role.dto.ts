@@ -9,7 +9,6 @@ import {
   MinLength,
 } from 'class-validator';
 import { PermissionResponseDto } from './permission.dto.js';
-import type { SanitizedRole } from '../domain/entities/role.entity.js';
 
 @InputType('CreateRoleInput', {
   description: 'Input payload for creating a new organization role',
@@ -137,7 +136,7 @@ export class RemoveRoleFromMemberInput {
 }
 
 @ObjectType('Role', { description: 'Role details' })
-export class RoleResponseDto implements SanitizedRole {
+export class RoleResponseDto {
   id!: number;
 
   @Field(() => String, { description: 'Public unique role identifier' })

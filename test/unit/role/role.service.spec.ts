@@ -5,24 +5,58 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { RoleService } from '../../../src/role/role.service.js';
-import { IRoleRepository } from '../../../src/role/domain/repositories/role-repository.interface.js';
-import { IPermissionRepository } from '../../../src/role/domain/repositories/permission-repository.interface.js';
-import { IOrganizationRepository } from '../../../src/organization/domain/repositories/organization-repository.interface.js';
-import { IOrganizationMemberRepository } from '../../../src/organization/domain/repositories/organization-member-repository.interface.js';
-import { RoleEntity } from '../../../src/role/domain/entities/role.entity.js';
-import { PermissionEntity } from '../../../src/role/domain/entities/permission.entity.js';
-import { OrganizationEntity } from '../../../src/organization/domain/entities/organization.entity.js';
-import { OrganizationMemberEntity } from '../../../src/organization/domain/entities/organization-member.entity.js';
-import { OrganizationRole } from '../../../src/organization/domain/enums/organization-role.enum.js';
+import { PrismaService } from '../../../src/prisma/prisma.service.js';
+import { OrganizationRole } from '../../../src/organization/enums/organization-role.enum.js';
+import * as OrgHelper from '../../../src/organization/organization.helper.js';
+import * as RoleHelper from '../../../src/role/role.helper.js';
+
+vi.mock('../../../src/organization/organization.helper.js', () => ({
+  findByPubIdOrSlug: vi.fn(),
+  findByOrgAndUser: vi.fn(),
+  findMemberByPubId: vi.fn(),
+  countMembers: vi.fn(),
+  resolveOrganization: vi.fn(),
+  resolveUser: vi.fn(),
+  getOrgModel: vi.fn(),
+  getMemberModel: vi.fn(),
+}));
+
+vi.mock('../../../src/role/role.helper.js', () => ({
+  getRoleModel: vi.fn(),
+  getPermissionModel: vi.fn(),
+  getRolePermissionModel: vi.fn(),
+  getMemberRoleModel: vi.fn(),
+  findRoleById: vi.fn(),
+  findRoleByPubId: vi.fn(),
+  findRoleByNameAndOrg: vi.fn(),
+  findRoleByPubIdAndOrg: vi.fn(),
+  findAllRolesByOrg: vi.fn(),
+  createRole: vi.fn(),
+  updateRole: vi.fn(),
+  deleteRole: vi.fn(),
+  findPermissionById: vi.fn(),
+  findPermissionByPubId: vi.fn(),
+  findPermissionByResourceAndAction: vi.fn(),
+  findAllPermissions: vi.fn(),
+  findPermissionsByIds: vi.fn(),
+  findPermissionsByPubIds: vi.fn(),
+  createPermission: vi.fn(),
+  updatePermission: vi.fn(),
+  deletePermission: vi.fn(),
+  getRolePermissions: vi.fn(),
+  assignPermissionsToRole: vi.fn(),
+  removePermissionsFromRole: vi.fn(),
+  syncRolePermissions: vi.fn(),
+  getMemberRoles: vi.fn(),
+  assignRoleToMember: vi.fn(),
+  removeRoleFromMember: vi.fn(),
+}));
 
 describe('RoleService', () => {
   let service: RoleService;
-  let mockRoleRepo: IRoleRepository;
-  let mockPermRepo: IPermissionRepository;
-  let mockOrgRepo: IOrganizationRepository;
-  let mockMemberRepo: IOrganizationMemberRepository;
+  let mockPrisma: PrismaService;
 
-  const sampleOrg = OrganizationEntity.reconstitute({
+  const sampleOrg = {
     id: 1,
     pubId: 'org_abc123',
     name: 'Acme Corp',
@@ -31,27 +65,27 @@ describe('RoleService', () => {
     description: 'Test Org',
     createdAt: new Date(),
     updatedAt: new Date(),
-  });
+  };
 
-  const sampleOwnerMember = OrganizationMemberEntity.reconstitute({
+  const sampleOwnerMember = {
     id: 100,
     pubId: 'mem_own123',
     organizationId: 1,
     userId: 10,
     role: OrganizationRole.OWNER,
     joinedAt: new Date(),
-  });
+  };
 
-  const sampleRegularMember = OrganizationMemberEntity.reconstitute({
+  const sampleRegularMember = {
     id: 101,
     pubId: 'mem_reg456',
     organizationId: 1,
     userId: 20,
     role: OrganizationRole.MEMBER,
     joinedAt: new Date(),
-  });
+  };
 
-  const samplePerm = PermissionEntity.reconstitute({
+  const samplePerm = {
     id: 1,
     pubId: 'perm_proj_create',
     resource: 'project',
@@ -59,90 +93,32 @@ describe('RoleService', () => {
     description: 'Create projects',
     createdAt: new Date(),
     updatedAt: new Date(),
-  });
+  };
 
-  const sampleRole = RoleEntity.reconstitute({
+  const sampleRole = {
     id: 5,
     pubId: 'rol_lead123',
     name: 'Lead Developer',
     description: 'Tech lead',
     organizationId: 1,
-    permissions: [samplePerm.sanitize()],
+    permissions: [samplePerm],
     createdAt: new Date(),
     updatedAt: new Date(),
-  });
+  };
 
   beforeEach(() => {
-    mockRoleRepo = {
-      findById: vi.fn(),
-      findByPubId: vi.fn(),
-      findByNameAndOrg: vi.fn(),
-      findByPubIdAndOrg: vi.fn(),
-      findAllByOrg: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-      getRolePermissions: vi.fn(),
-      assignPermissions: vi.fn(),
-      removePermissions: vi.fn(),
-      syncPermissions: vi.fn(),
-      getMemberRoles: vi.fn(),
-      assignRoleToMember: vi.fn(),
-      removeRoleFromMember: vi.fn(),
-    };
-
-    mockPermRepo = {
-      findById: vi.fn(),
-      findByPubId: vi.fn(),
-      findByResourceAndAction: vi.fn(),
-      findAll: vi.fn(),
-      findByIds: vi.fn(),
-      findByPubIds: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-    };
-
-    mockOrgRepo = {
-      findById: vi.fn(),
-      findByPubId: vi.fn(),
-      findBySlug: vi.fn(),
-      findByPubIdOrSlug: vi.fn(),
-      findAllByUserId: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-    };
-
-    mockMemberRepo = {
-      findById: vi.fn(),
-      findByPubId: vi.fn(),
-      findByOrgAndUser: vi.fn(),
-      findMembersWithUsers: vi.fn(),
-      findUserMemberships: vi.fn(),
-      countByOrg: vi.fn(),
-      countOwnersByOrg: vi.fn(),
-      create: vi.fn(),
-      updateRole: vi.fn(),
-      delete: vi.fn(),
-      deleteByOrgAndUser: vi.fn(),
-    };
-
-    service = new RoleService(
-      mockRoleRepo,
-      mockPermRepo,
-      mockOrgRepo,
-      mockMemberRepo,
-    );
+    vi.clearAllMocks();
+    mockPrisma = {} as unknown as PrismaService;
+    service = new RoleService(mockPrisma);
   });
 
   describe('createRole', () => {
     it('should create role successfully when caller is OWNER', async () => {
-      vi.mocked(mockOrgRepo.findByPubIdOrSlug).mockResolvedValue(sampleOrg);
-      vi.mocked(mockMemberRepo.findByOrgAndUser).mockResolvedValue(sampleOwnerMember);
-      vi.mocked(mockRoleRepo.findByNameAndOrg).mockResolvedValue(null);
-      vi.mocked(mockRoleRepo.create).mockResolvedValue(sampleRole);
-      vi.mocked(mockRoleRepo.findById).mockResolvedValue(sampleRole);
+      vi.mocked(OrgHelper.findByPubIdOrSlug).mockResolvedValue(sampleOrg as any);
+      vi.mocked(OrgHelper.findByOrgAndUser).mockResolvedValue(sampleOwnerMember as any);
+      vi.mocked(RoleHelper.findRoleByNameAndOrg).mockResolvedValue(null);
+      vi.mocked(RoleHelper.createRole).mockResolvedValue(sampleRole as any);
+      vi.mocked(RoleHelper.findRoleById).mockResolvedValue(sampleRole as any);
 
       const result = await service.createRole(10, {
         organizationPubId: 'org_abc123',
@@ -155,8 +131,8 @@ describe('RoleService', () => {
     });
 
     it('should throw ForbiddenException when caller is not OWNER or ADMIN', async () => {
-      vi.mocked(mockOrgRepo.findByPubIdOrSlug).mockResolvedValue(sampleOrg);
-      vi.mocked(mockMemberRepo.findByOrgAndUser).mockResolvedValue(sampleRegularMember);
+      vi.mocked(OrgHelper.findByPubIdOrSlug).mockResolvedValue(sampleOrg as any);
+      vi.mocked(OrgHelper.findByOrgAndUser).mockResolvedValue(sampleRegularMember as any);
 
       await expect(
         service.createRole(20, {
@@ -167,9 +143,9 @@ describe('RoleService', () => {
     });
 
     it('should throw ConflictException if role name already exists in org', async () => {
-      vi.mocked(mockOrgRepo.findByPubIdOrSlug).mockResolvedValue(sampleOrg);
-      vi.mocked(mockMemberRepo.findByOrgAndUser).mockResolvedValue(sampleOwnerMember);
-      vi.mocked(mockRoleRepo.findByNameAndOrg).mockResolvedValue(sampleRole);
+      vi.mocked(OrgHelper.findByPubIdOrSlug).mockResolvedValue(sampleOrg as any);
+      vi.mocked(OrgHelper.findByOrgAndUser).mockResolvedValue(sampleOwnerMember as any);
+      vi.mocked(RoleHelper.findRoleByNameAndOrg).mockResolvedValue(sampleRole as any);
 
       await expect(
         service.createRole(10, {
@@ -180,11 +156,11 @@ describe('RoleService', () => {
     });
 
     it('should throw BadRequestException if invalid permission pubIds provided', async () => {
-      vi.mocked(mockOrgRepo.findByPubIdOrSlug).mockResolvedValue(sampleOrg);
-      vi.mocked(mockMemberRepo.findByOrgAndUser).mockResolvedValue(sampleOwnerMember);
-      vi.mocked(mockRoleRepo.findByNameAndOrg).mockResolvedValue(null);
-      vi.mocked(mockRoleRepo.create).mockResolvedValue(sampleRole);
-      vi.mocked(mockPermRepo.findByPubIds).mockResolvedValue([]);
+      vi.mocked(OrgHelper.findByPubIdOrSlug).mockResolvedValue(sampleOrg as any);
+      vi.mocked(OrgHelper.findByOrgAndUser).mockResolvedValue(sampleOwnerMember as any);
+      vi.mocked(RoleHelper.findRoleByNameAndOrg).mockResolvedValue(null);
+      vi.mocked(RoleHelper.createRole).mockResolvedValue(sampleRole as any);
+      vi.mocked(RoleHelper.findPermissionsByPubIds).mockResolvedValue([]);
 
       await expect(
         service.createRole(10, {
@@ -198,20 +174,14 @@ describe('RoleService', () => {
 
   describe('updateRole', () => {
     it('should update role name and description', async () => {
-      vi.mocked(mockRoleRepo.findByPubId).mockResolvedValue(sampleRole);
-      vi.mocked(mockMemberRepo.findByOrgAndUser).mockResolvedValue(sampleOwnerMember);
-      vi.mocked(mockRoleRepo.findByNameAndOrg).mockResolvedValue(null);
-      vi.mocked(mockRoleRepo.update).mockResolvedValue(
-        RoleEntity.reconstitute({
-          id: 5,
-          pubId: 'rol_lead123',
-          name: 'Principal Developer',
-          description: 'Principal',
-          organizationId: 1,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        }),
-      );
+      vi.mocked(RoleHelper.findRoleByPubId).mockResolvedValue(sampleRole as any);
+      vi.mocked(OrgHelper.findByOrgAndUser).mockResolvedValue(sampleOwnerMember as any);
+      vi.mocked(RoleHelper.findRoleByNameAndOrg).mockResolvedValue(null);
+      vi.mocked(RoleHelper.updateRole).mockResolvedValue({
+        ...sampleRole,
+        name: 'Principal Developer',
+        description: 'Principal',
+      } as any);
 
       const result = await service.updateRole('rol_lead123', 10, {
         name: 'Principal Developer',
@@ -224,9 +194,9 @@ describe('RoleService', () => {
 
   describe('deleteRole', () => {
     it('should delete role successfully', async () => {
-      vi.mocked(mockRoleRepo.findByPubId).mockResolvedValue(sampleRole);
-      vi.mocked(mockMemberRepo.findByOrgAndUser).mockResolvedValue(sampleOwnerMember);
-      vi.mocked(mockRoleRepo.delete).mockResolvedValue(true);
+      vi.mocked(RoleHelper.findRoleByPubId).mockResolvedValue(sampleRole as any);
+      vi.mocked(OrgHelper.findByOrgAndUser).mockResolvedValue(sampleOwnerMember as any);
+      vi.mocked(RoleHelper.deleteRole).mockResolvedValue(true as any);
 
       const result = await service.deleteRole('rol_lead123', 10);
       expect(result.success).toBe(true);
@@ -235,8 +205,8 @@ describe('RoleService', () => {
 
   describe('permissions', () => {
     it('should create permission', async () => {
-      vi.mocked(mockPermRepo.findByResourceAndAction).mockResolvedValue(null);
-      vi.mocked(mockPermRepo.create).mockResolvedValue(samplePerm);
+      vi.mocked(RoleHelper.findPermissionByResourceAndAction).mockResolvedValue(null);
+      vi.mocked(RoleHelper.createPermission).mockResolvedValue(samplePerm as any);
 
       const result = await service.createPermission({
         resource: 'project',
@@ -249,7 +219,7 @@ describe('RoleService', () => {
     });
 
     it('should throw ConflictException if permission already exists', async () => {
-      vi.mocked(mockPermRepo.findByResourceAndAction).mockResolvedValue(samplePerm);
+      vi.mocked(RoleHelper.findPermissionByResourceAndAction).mockResolvedValue(samplePerm as any);
 
       await expect(
         service.createPermission({
@@ -260,7 +230,7 @@ describe('RoleService', () => {
     });
 
     it('should list permissions', async () => {
-      vi.mocked(mockPermRepo.findAll).mockResolvedValue([samplePerm]);
+      vi.mocked(RoleHelper.findAllPermissions).mockResolvedValue([samplePerm] as any);
 
       const list = await service.listPermissions();
       expect(list.length).toBe(1);
@@ -270,16 +240,16 @@ describe('RoleService', () => {
 
   describe('member role assignment', () => {
     it('should assign role to member', async () => {
-      vi.mocked(mockOrgRepo.findByPubIdOrSlug).mockResolvedValue(sampleOrg);
-      vi.mocked(mockMemberRepo.findByOrgAndUser).mockResolvedValue(sampleOwnerMember);
-      vi.mocked(mockMemberRepo.findByPubId).mockResolvedValue(sampleRegularMember);
-      vi.mocked(mockRoleRepo.findByPubIdAndOrg).mockResolvedValue(sampleRole);
-      vi.mocked(mockRoleRepo.assignRoleToMember).mockResolvedValue({
+      vi.mocked(OrgHelper.findByPubIdOrSlug).mockResolvedValue(sampleOrg as any);
+      vi.mocked(OrgHelper.findByOrgAndUser).mockResolvedValue(sampleOwnerMember as any);
+      vi.mocked(OrgHelper.findMemberByPubId).mockResolvedValue(sampleRegularMember as any);
+      vi.mocked(RoleHelper.findRoleByPubIdAndOrg).mockResolvedValue(sampleRole as any);
+      vi.mocked(RoleHelper.assignRoleToMember).mockResolvedValue({
+        id: 1,
         pubId: 'omr_123',
         organizationMemberId: 101,
         roleId: 5,
         assignedAt: new Date(),
-        sanitize: vi.fn(),
       } as any);
 
       const result = await service.assignRoleToMember(10, {
@@ -293,11 +263,11 @@ describe('RoleService', () => {
     });
 
     it('should remove role from member', async () => {
-      vi.mocked(mockOrgRepo.findByPubIdOrSlug).mockResolvedValue(sampleOrg);
-      vi.mocked(mockMemberRepo.findByOrgAndUser).mockResolvedValue(sampleOwnerMember);
-      vi.mocked(mockMemberRepo.findByPubId).mockResolvedValue(sampleRegularMember);
-      vi.mocked(mockRoleRepo.findByPubIdAndOrg).mockResolvedValue(sampleRole);
-      vi.mocked(mockRoleRepo.removeRoleFromMember).mockResolvedValue(true);
+      vi.mocked(OrgHelper.findByPubIdOrSlug).mockResolvedValue(sampleOrg as any);
+      vi.mocked(OrgHelper.findByOrgAndUser).mockResolvedValue(sampleOwnerMember as any);
+      vi.mocked(OrgHelper.findMemberByPubId).mockResolvedValue(sampleRegularMember as any);
+      vi.mocked(RoleHelper.findRoleByPubIdAndOrg).mockResolvedValue(sampleRole as any);
+      vi.mocked(RoleHelper.removeRoleFromMember).mockResolvedValue(true as any);
 
       const result = await service.removeRoleFromMember(10, {
         organizationPubId: 'org_abc123',

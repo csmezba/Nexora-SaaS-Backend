@@ -1,55 +1,45 @@
 import {
   ConflictException,
   HttpException,
-  Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import {
-  USER_REPOSITORY,
-  type IUserRepository,
-} from '../user/domain/repositories/user-repository.interface.js';
-import {
-  PASSWORD_HASHER,
-  type IPasswordHasher,
-} from './domain/services/password-hasher.interface.js';
-import {
-  TOKEN_SERVICE,
-  type ITokenService,
-  type TokenPayload,
-} from './domain/services/token-service.interface.js';
-import {
-  type AuthResponseDto,
-  type LoginDto,
-  type RefreshTokenDto,
-  type RegisterDto,
+import { JwtService } from '@nestjs/jwt';
+import { PrismaService } from '../prisma/prisma.service.js';
+import * as UserHelper from '../user/user.helper.js';
+import * as AuthHelper from './auth.helper.js';
+import type { TokenPayload } from './types/auth.types.js';
+import type { SanitizedUser } from '../user/types/user.types.js';
+import type {
+  AuthResponseDto,
+  LoginDto,
+  RefreshTokenDto,
+  RegisterDto,
 } from './dto/auth.dto.js';
-import type { SanitizedUser } from '../user/domain/entities/user.entity.js';
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
   constructor(
-    @Inject(USER_REPOSITORY) private readonly userRepository: IUserRepository,
-    @Inject(PASSWORD_HASHER) private readonly passwordHasher: IPasswordHasher,
-    @Inject(TOKEN_SERVICE) private readonly tokenService: ITokenService,
+    private readonly prisma: PrismaService,
+    private readonly jwtService: JwtService,
   ) {}
 
   async register(dto: RegisterDto): Promise<AuthResponseDto> {
     try {
-      const existing = await this.userRepository.findByEmail(dto.email);
+      const existing = await UserHelper.findUserByEmail(this.prisma, dto.email);
       if (existing) {
         throw new ConflictException(
           `User with email "${dto.email}" already exists`,
         );
       }
 
-      const passwordHash = await this.passwordHasher.hash(dto.password);
-      const user = await this.userRepository.create({
+      const passwordHash = await AuthHelper.hashPassword(dto.password);
+      const user = await UserHelper.createUser(this.prisma, {
         email: dto.email,
         passwordHash,
         firstName: dto.firstName,
@@ -61,14 +51,17 @@ export class AuthService {
         email: user.email,
       };
 
-      const tokens = await this.tokenService.generateTokens(tokenPayload);
-      const refreshTokenHash = await this.passwordHasher.hash(
+      const tokens = await AuthHelper.generateTokens(
+        this.jwtService,
+        tokenPayload,
+      );
+      const refreshTokenHash = await AuthHelper.hashPassword(
         tokens.refreshToken,
       );
-      await this.userRepository.update(user.id, { refreshTokenHash });
+      await UserHelper.updateUser(this.prisma, user.id, { refreshTokenHash });
 
       return {
-        user: user.sanitize(),
+        user: UserHelper.sanitizeUser(user),
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
         tokenType: tokens.tokenType,
@@ -78,21 +71,25 @@ export class AuthService {
       if (error instanceof HttpException) {
         throw error;
       }
-      this.logger.error(`Error in register: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(
+        `Error in register: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new InternalServerErrorException(
-        error instanceof Error ? error.message : 'An error occurred during registration',
+        error instanceof Error
+          ? error.message
+          : 'An error occurred during registration',
       );
     }
   }
 
   async login(dto: LoginDto): Promise<AuthResponseDto> {
     try {
-      const user = await this.userRepository.findByEmail(dto.email);
+      const user = await UserHelper.findUserByEmail(this.prisma, dto.email);
       if (!user) {
         throw new UnauthorizedException('Invalid email or password');
       }
 
-      const isPasswordValid = await this.passwordHasher.compare(
+      const isPasswordValid = await AuthHelper.comparePassword(
         dto.password,
         user.passwordHash,
       );
@@ -105,14 +102,17 @@ export class AuthService {
         email: user.email,
       };
 
-      const tokens = await this.tokenService.generateTokens(tokenPayload);
-      const refreshTokenHash = await this.passwordHasher.hash(
+      const tokens = await AuthHelper.generateTokens(
+        this.jwtService,
+        tokenPayload,
+      );
+      const refreshTokenHash = await AuthHelper.hashPassword(
         tokens.refreshToken,
       );
-      await this.userRepository.update(user.id, { refreshTokenHash });
+      await UserHelper.updateUser(this.prisma, user.id, { refreshTokenHash });
 
       return {
-        user: user.sanitize(),
+        user: UserHelper.sanitizeUser(user),
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
         tokenType: tokens.tokenType,
@@ -122,25 +122,30 @@ export class AuthService {
       if (error instanceof HttpException) {
         throw error;
       }
-      this.logger.error(`Error in login: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(
+        `Error in login: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new InternalServerErrorException(
-        error instanceof Error ? error.message : 'An error occurred during login',
+        error instanceof Error
+          ? error.message
+          : 'An error occurred during login',
       );
     }
   }
 
   async refreshToken(dto: RefreshTokenDto): Promise<AuthResponseDto> {
     try {
-      const payload = await this.tokenService.verifyRefreshToken(
+      const payload = await AuthHelper.verifyRefreshToken(
+        this.jwtService,
         dto.refreshToken,
       );
-      const user = await this.userRepository.findById(payload.sub);
+      const user = await UserHelper.findUserById(this.prisma, payload.sub);
 
       if (!user || !user.refreshTokenHash) {
         throw new UnauthorizedException('Invalid refresh token session');
       }
 
-      const isRefreshMatch = await this.passwordHasher.compare(
+      const isRefreshMatch = await AuthHelper.comparePassword(
         dto.refreshToken,
         user.refreshTokenHash,
       );
@@ -156,16 +161,19 @@ export class AuthService {
         email: user.email,
       };
 
-      const tokens = await this.tokenService.generateTokens(tokenPayload);
-      const newRefreshTokenHash = await this.passwordHasher.hash(
+      const tokens = await AuthHelper.generateTokens(
+        this.jwtService,
+        tokenPayload,
+      );
+      const newRefreshTokenHash = await AuthHelper.hashPassword(
         tokens.refreshToken,
       );
-      await this.userRepository.update(user.id, {
+      await UserHelper.updateUser(this.prisma, user.id, {
         refreshTokenHash: newRefreshTokenHash,
       });
 
       return {
-        user: user.sanitize(),
+        user: UserHelper.sanitizeUser(user),
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
         tokenType: tokens.tokenType,
@@ -175,42 +183,56 @@ export class AuthService {
       if (error instanceof HttpException) {
         throw error;
       }
-      this.logger.error(`Error in refreshToken: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(
+        `Error in refreshToken: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new InternalServerErrorException(
-        error instanceof Error ? error.message : 'An error occurred during token refresh',
+        error instanceof Error
+          ? error.message
+          : 'An error occurred during token refresh',
       );
     }
   }
 
   async logout(userId: number): Promise<boolean> {
     try {
-      await this.userRepository.update(userId, { refreshTokenHash: null });
+      await UserHelper.updateUser(this.prisma, userId, {
+        refreshTokenHash: null,
+      });
       return true;
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
       }
-      this.logger.error(`Error in logout: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(
+        `Error in logout: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new InternalServerErrorException(
-        error instanceof Error ? error.message : 'An error occurred during logout',
+        error instanceof Error
+          ? error.message
+          : 'An error occurred during logout',
       );
     }
   }
 
   async getProfile(userId: number): Promise<SanitizedUser> {
     try {
-      const user = await this.userRepository.findById(userId);
+      const user = await UserHelper.findUserById(this.prisma, userId);
       if (!user) {
         throw new NotFoundException(`User with ID ${userId} not found`);
       }
-      return user.sanitize();
+      return UserHelper.sanitizeUser(user);
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
       }
-      this.logger.error(`Error in getProfile: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(
+        `Error in getProfile: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new InternalServerErrorException(
-        error instanceof Error ? error.message : 'An error occurred while fetching user profile',
+        error instanceof Error
+          ? error.message
+          : 'An error occurred while fetching user profile',
       );
     }
   }
