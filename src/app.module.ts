@@ -12,6 +12,7 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter.
 import { ResponseFormatPlugin } from './common/plugins/response-format.plugin.js';
 import { TransformResponseInterceptor } from './common/interceptors/transform-response.interceptor.js';
 import { ResponseTransformMiddleware } from './common/middlewares/response-transform.middleware.js';
+import { ObserveModule } from './observe.js';
 
 @Module({
   imports: [
@@ -56,6 +57,19 @@ import { ResponseTransformMiddleware } from './common/middlewares/response-trans
     AuthModule,
     OrganizationModule,
     RoleModule,
+    ObserveModule.forRoot({
+      appKey: process.env.OBSERVE_APP_KEY || '',
+      appSecret: process.env.OBSERVE_APP_SECRET || '',
+      serviceId: process.env.OBSERVE_SERVICE_ID || 'nexora-api',
+      serviceVersion: process.env.OBSERVE_SERVICE_VERSION || '0.0.1',
+      ...(process.env.OBSERVE_ENDPOINT ? { endpoint: process.env.OBSERVE_ENDPOINT } : {}),
+      http: {
+        getUserId: (req: any) => req?.user?.id,
+      },
+      graphql: {
+        getUserId: (context: any) => context?.req?.user?.id,
+      },
+    }),
   ],
   controllers: [],
   providers: [

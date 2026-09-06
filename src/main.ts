@@ -1,10 +1,14 @@
+import 'dotenv/config';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter.js';
+import { ObserveInstrument } from './observe.js';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    instrument: ObserveInstrument,
+  });
   app.enableCors();
   app.useGlobalFilters(new GlobalExceptionFilter());
   app.useGlobalPipes(
