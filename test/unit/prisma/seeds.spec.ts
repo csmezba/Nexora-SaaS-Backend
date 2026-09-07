@@ -25,6 +25,13 @@ import {
   seedProjects,
   SEED_PROJECTS,
 } from '../../../src/prisma/seeds/project.seed.js';
+import {
+  seedTasks,
+  SEED_LABELS,
+  SEED_SPRINTS,
+  SEED_TASKS,
+  SEED_DEPENDENCIES,
+} from '../../../src/prisma/seeds/task.seed.js';
 import { runSeeds } from '../../../src/prisma/seeds/seed.js';
 
 describe('Prisma Seed Modules', () => {
@@ -41,6 +48,14 @@ describe('Prisma Seed Modules', () => {
   let mockProjectMemberModel: any;
   let mockSessionModel: any;
   let mockOAuthModel: any;
+  let mockLabelModel: any;
+  let mockTaskLabelModel: any;
+  let mockSprintModel: any;
+  let mockSprintTaskModel: any;
+  let mockTaskModel: any;
+  let mockTaskAssigneeModel: any;
+  let mockTaskCommentModel: any;
+  let mockTaskDependencyModel: any;
 
   beforeEach(() => {
     mockUserModel = {
@@ -204,6 +219,113 @@ describe('Prisma Seed Modules', () => {
       ),
     };
 
+    mockLabelModel = {
+      all: vi.fn().mockResolvedValue([]),
+      first: vi.fn().mockResolvedValue(null),
+      where: vi.fn().mockReturnValue({
+        first: vi.fn().mockResolvedValue(null),
+        all: vi.fn().mockResolvedValue([]),
+      }),
+      create: vi.fn().mockImplementation((data) =>
+        Promise.resolve({
+          id: Math.floor(Math.random() * 1000) + 1,
+          ...data,
+        }),
+      ),
+    };
+
+    mockTaskLabelModel = {
+      all: vi.fn().mockResolvedValue([]),
+      where: vi.fn().mockReturnValue({
+        all: vi.fn().mockResolvedValue([]),
+      }),
+      create: vi.fn().mockImplementation((data) =>
+        Promise.resolve({
+          ...data,
+        }),
+      ),
+    };
+
+    mockSprintModel = {
+      all: vi.fn().mockResolvedValue([]),
+      first: vi.fn().mockResolvedValue(null),
+      where: vi.fn().mockReturnValue({
+        first: vi.fn().mockResolvedValue(null),
+        all: vi.fn().mockResolvedValue([]),
+      }),
+      create: vi.fn().mockImplementation((data) =>
+        Promise.resolve({
+          id: Math.floor(Math.random() * 1000) + 1,
+          ...data,
+        }),
+      ),
+    };
+
+    mockSprintTaskModel = {
+      all: vi.fn().mockResolvedValue([]),
+      where: vi.fn().mockReturnValue({
+        all: vi.fn().mockResolvedValue([]),
+      }),
+      create: vi.fn().mockImplementation((data) =>
+        Promise.resolve({
+          ...data,
+        }),
+      ),
+    };
+
+    mockTaskModel = {
+      all: vi.fn().mockResolvedValue([]),
+      first: vi.fn().mockResolvedValue(null),
+      where: vi.fn().mockReturnValue({
+        first: vi.fn().mockResolvedValue(null),
+        all: vi.fn().mockResolvedValue([]),
+      }),
+      create: vi.fn().mockImplementation((data) =>
+        Promise.resolve({
+          id: Math.floor(Math.random() * 1000) + 1,
+          ...data,
+        }),
+      ),
+    };
+
+    mockTaskAssigneeModel = {
+      all: vi.fn().mockResolvedValue([]),
+      where: vi.fn().mockReturnValue({
+        all: vi.fn().mockResolvedValue([]),
+      }),
+      create: vi.fn().mockImplementation((data) =>
+        Promise.resolve({
+          ...data,
+        }),
+      ),
+    };
+
+    mockTaskCommentModel = {
+      all: vi.fn().mockResolvedValue([]),
+      where: vi.fn().mockReturnValue({
+        all: vi.fn().mockResolvedValue([]),
+      }),
+      create: vi.fn().mockImplementation((data) =>
+        Promise.resolve({
+          id: Math.floor(Math.random() * 1000) + 1,
+          ...data,
+        }),
+      ),
+    };
+
+    mockTaskDependencyModel = {
+      all: vi.fn().mockResolvedValue([]),
+      where: vi.fn().mockReturnValue({
+        all: vi.fn().mockResolvedValue([]),
+      }),
+      create: vi.fn().mockImplementation((data) =>
+        Promise.resolve({
+          id: Math.floor(Math.random() * 1000) + 1,
+          ...data,
+        }),
+      ),
+    };
+
     // Attach mock models to db.orm
     (db as any).orm = {
       User: mockUserModel,
@@ -219,6 +341,14 @@ describe('Prisma Seed Modules', () => {
       ProjectMember: mockProjectMemberModel,
       UserSession: mockSessionModel,
       OAuthAccount: mockOAuthModel,
+      Label: mockLabelModel,
+      TaskLabel: mockTaskLabelModel,
+      Sprint: mockSprintModel,
+      SprintTask: mockSprintTaskModel,
+      Task: mockTaskModel,
+      TaskAssignee: mockTaskAssigneeModel,
+      TaskComment: mockTaskCommentModel,
+      TaskDependency: mockTaskDependencyModel,
     };
   });
 
@@ -428,6 +558,52 @@ describe('Prisma Seed Modules', () => {
     });
   });
 
+  describe('Task Seed', () => {
+    it('should create labels, sprints, tasks, comments, and dependencies', async () => {
+      mockOrgModel.all.mockResolvedValue([
+        { id: 1, pubId: 'org_1', name: 'Nexora Labs', slug: 'nexora-labs' },
+        { id: 2, pubId: 'org_2', name: 'Acme Corporation', slug: 'acme-corp' },
+      ]);
+      mockUserModel.all.mockResolvedValue(
+        SEED_USERS.map((u, i) => ({
+          id: i + 1,
+          pubId: `usr_${i + 1}`,
+          email: u.email,
+        })),
+      );
+      mockTeamModel.all.mockResolvedValue([
+        { id: 1, organizationId: 1, name: 'Engineering' },
+        { id: 2, organizationId: 1, name: 'Product & Design' },
+        { id: 3, organizationId: 2, name: 'Platform Engineering' },
+        { id: 4, organizationId: 2, name: 'Solutions Delivery' },
+      ]);
+      mockProjectModel.all.mockResolvedValue(
+        SEED_PROJECTS.map((p, i) => ({
+          id: i + 1,
+          pubId: `prj_${i + 1}`,
+          organizationId: p.orgSlug === 'nexora-labs' ? 1 : 2,
+          name: p.name,
+          key: p.key,
+        })),
+      );
+
+      const result = await seedTasks();
+
+      expect(result.labels).toHaveLength(SEED_LABELS.length);
+      expect(result.sprints).toHaveLength(SEED_SPRINTS.length);
+      expect(result.tasks).toHaveLength(SEED_TASKS.length);
+      expect(mockLabelModel.create).toHaveBeenCalledTimes(SEED_LABELS.length);
+      expect(mockSprintModel.create).toHaveBeenCalledTimes(SEED_SPRINTS.length);
+      expect(mockTaskModel.create).toHaveBeenCalledTimes(SEED_TASKS.length);
+      expect(mockTaskAssigneeModel.create).toHaveBeenCalled();
+      expect(mockTaskLabelModel.create).toHaveBeenCalled();
+      expect(mockTaskCommentModel.create).toHaveBeenCalled();
+      expect(mockTaskDependencyModel.create).toHaveBeenCalledTimes(
+        SEED_DEPENDENCIES.length,
+      );
+    });
+  });
+
   describe('Seed Runner (runSeeds)', () => {
     it('should run individual target seeds', async () => {
       await expect(runSeeds('user')).resolves.not.toThrow();
@@ -437,6 +613,7 @@ describe('Prisma Seed Modules', () => {
       await expect(runSeeds('auth')).resolves.not.toThrow();
       await expect(runSeeds('team')).resolves.not.toThrow();
       await expect(runSeeds('project')).resolves.not.toThrow();
+      await expect(runSeeds('task')).resolves.not.toThrow();
     });
 
     it('should run full suite when target is "all"', async () => {

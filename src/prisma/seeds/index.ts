@@ -5,5 +5,6 @@ export * from './organization.seed.js';
 export * from './role.seed.js';
 export * from './team.seed.js';
 export * from './project.seed.js';
+export * from './task.seed.js';
 export * from './auth.seed.js';
 export * from './seed.js';

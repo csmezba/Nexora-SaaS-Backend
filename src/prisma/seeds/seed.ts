@@ -6,6 +6,7 @@ import { seedOrganizations } from './organization.seed.js';
 import { seedRoles } from './role.seed.js';
 import { seedTeams } from './team.seed.js';
 import { seedProjects } from './project.seed.js';
+import { seedTasks } from './task.seed.js';
 
 export type SeedTarget =
   | 'all'
@@ -22,7 +23,11 @@ export type SeedTarget =
   | 'team'
   | 'teams'
   | 'project'
-  | 'projects';
+  | 'projects'
+  | 'task'
+  | 'tasks'
+  | 'sprint'
+  | 'sprints';
 
 export async function runSeeds(target: string = 'all'): Promise<void> {
   const startTime = Date.now();
@@ -69,35 +74,46 @@ export async function runSeeds(target: string = 'all'): Promise<void> {
         await seedProjects();
         break;
 
+      case 'task':
+      case 'tasks':
+      case 'sprint':
+      case 'sprints':
+        await seedTasks();
+        break;
+
       case 'all':
       case '':
         logger.info('Running full seed suite in dependency order...\n');
-        logger.info('--- STEP 1/7: Permissions ---');
+        logger.info('--- STEP 1/8: Permissions ---');
         await seedPermissions();
 
         console.log('');
-        logger.info('--- STEP 2/7: Users ---');
+        logger.info('--- STEP 2/8: Users ---');
         await seedUsers();
 
         console.log('');
-        logger.info('--- STEP 3/7: Auth ---');
+        logger.info('--- STEP 3/8: Auth ---');
         await seedAuth();
 
         console.log('');
-        logger.info('--- STEP 4/7: Organizations & Members ---');
+        logger.info('--- STEP 4/8: Organizations & Members ---');
         await seedOrganizations();
 
         console.log('');
-        logger.info('--- STEP 5/7: Roles & RolePermissions ---');
+        logger.info('--- STEP 5/8: Roles & RolePermissions ---');
         await seedRoles();
 
         console.log('');
-        logger.info('--- STEP 6/7: Teams & TeamMembers ---');
+        logger.info('--- STEP 6/8: Teams & TeamMembers ---');
         await seedTeams();
 
         console.log('');
-        logger.info('--- STEP 7/7: Projects & ProjectMembers ---');
+        logger.info('--- STEP 7/8: Projects & ProjectMembers ---');
         await seedProjects();
+
+        console.log('');
+        logger.info('--- STEP 8/8: Tasks, Sprints, Labels & Dependencies ---');
+        await seedTasks();
         break;
 
       case '--help':
@@ -140,6 +156,7 @@ Available Targets:
   role | roles                    Seed organization roles and permission bindings
   team | teams                    Seed teams and team memberships
   project | projects              Seed projects and project memberships
+  task | tasks | sprint | sprints Seed tasks, sprints, labels, and dependencies
 
 NPM Script Shortcuts:
   npm run seed:user
@@ -149,6 +166,7 @@ NPM Script Shortcuts:
   npm run seed:role
   npm run seed:team
   npm run seed:project
+  npm run seed:task
   npm run seed:all
   `);
 }
@@ -162,6 +180,7 @@ export {
   seedRoles,
   seedTeams,
   seedProjects,
+  seedTasks,
 };
 
 // Direct CLI execution
