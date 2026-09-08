@@ -46,7 +46,7 @@ describe('AuthService', () => {
     id: 1,
     pubId: 'usr_123',
     email: 'user@example.com',
-    passwordHash: '$2a$10$hashedpw',
+    password: '$2a$10$hashedpw',
     firstName: 'John',
     lastName: 'Doe',
     refreshTokenHash: '$2a$10$hashedrefresh',
@@ -88,7 +88,7 @@ describe('AuthService', () => {
       expect(result.user.email).toBe('user@example.com');
       expect(UserHelper.createUser).toHaveBeenCalledWith(mockPrisma, {
         email: 'user@example.com',
-        passwordHash: 'hashed_Password123!',
+        password: 'hashed_Password123!',
         firstName: 'John',
         lastName: 'Doe',
       });

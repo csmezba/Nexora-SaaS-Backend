@@ -2,7 +2,8 @@ export interface PrismaUserRecord {
   id: number;
   pubId: string;
   email: string;
-  passwordHash: string;
+  password: string;
+  passwordHash?: string;
   firstName?: string | null;
   lastName?: string | null;
   refreshTokenHash?: string | null;
@@ -23,13 +24,13 @@ export interface SanitizedUser {
 
 export interface CreateUserData {
   email: string;
-  passwordHash: string;
+  password: string;
   firstName?: string | null;
   lastName?: string | null;
 }
 
 export interface UpdateUserData {
-  passwordHash?: string;
+  password?: string;
   firstName?: string | null;
   lastName?: string | null;
   refreshTokenHash?: string | null;

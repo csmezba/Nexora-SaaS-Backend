@@ -38,10 +38,10 @@ export class AuthService {
         );
       }
 
-      const passwordHash = await AuthHelper.hashPassword(dto.password);
+      const password = await AuthHelper.hashPassword(dto.password);
       const user = await UserHelper.createUser(this.prisma, {
         email: dto.email,
-        passwordHash,
+        password,
         firstName: dto.firstName,
         lastName: dto.lastName,
       });
@@ -89,9 +89,10 @@ export class AuthService {
         throw new UnauthorizedException('Invalid email or password');
       }
 
+      const storedPassword = user.password || user.passwordHash || '';
       const isPasswordValid = await AuthHelper.comparePassword(
         dto.password,
-        user.passwordHash,
+        storedPassword,
       );
       if (!isPasswordValid) {
         throw new UnauthorizedException('Invalid email or password');
