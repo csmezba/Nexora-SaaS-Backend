@@ -22,6 +22,7 @@
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
     "postinstall": "prisma skills sync || exit 0",
     "contract:emit": "prisma contract emit",
+    "db:update": "prisma db update",
     "seed": "jiti src/prisma/seeds/seed.ts",
     "seed:all": "jiti src/prisma/seeds/seed.ts all",
     "seed:user": "jiti src/prisma/seeds/seed.ts user",
