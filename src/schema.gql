@@ -56,6 +56,24 @@ input AssignRoleToMemberInput {
   rolePubId: String!
 }
 
+<<<<<<< Updated upstream
+=======
+"""Input payload for assigning a user to a task"""
+input AssignTaskInput {
+  """Task unique pubId"""
+  taskPubId: String!
+
+  """User identifier (pubId or email)"""
+  userPubId: String!
+}
+
+input AssignTicketInput {
+  """User pubId to assign (or null to unassign)"""
+  assignedToUserPubId: String
+  ticketPubId: String!
+}
+
+>>>>>>> Stashed changes
 """Authentication response payload containing tokens and user data"""
 type AuthResponse {
   """JWT Access Token"""
@@ -74,6 +92,58 @@ type AuthResponse {
   user: User!
 }
 
+<<<<<<< Updated upstream
+=======
+type ConversationResponseDto {
+  createdAt: DateTime!
+  customer: CustomerResponseDto
+  customerPubId: String!
+  id: Int!
+  messages: [MessageResponseDto!]
+  participants: [User!]
+  pubId: String!
+  title: String
+  updatedAt: DateTime!
+}
+
+input CreateConversationInput {
+  customerPubId: String!
+
+  """Initial agent participant user pubIds"""
+  participantUserPubIds: [String!]
+  title: String
+}
+
+input CreateCustomerInput {
+  """Customer company name"""
+  company: String
+
+  """Customer email address"""
+  email: String
+
+  """Customer full name"""
+  name: String!
+
+  """Target organization public ID"""
+  organizationPubId: String!
+
+  """Customer contact phone number"""
+  phone: String
+}
+
+"""Input payload for creating an organization label"""
+input CreateLabelInput {
+  """Hex color code (e.g. #3B82F6)"""
+  color: String!
+
+  """Label name (e.g. Bug, Feature, DevOps)"""
+  name: String!
+
+  """Organization pubId or slug where label is created"""
+  organizationPubId: String!
+}
+
+>>>>>>> Stashed changes
 """Input payload for creating a new organization"""
 input CreateOrganizationInput {
   """Description or bio of the organization"""
@@ -163,11 +233,70 @@ input CreateTeamInput {
   organizationPubId: String!
 }
 
+input CreateTicketCommentInput {
+  content: String!
+  ticketPubId: String!
+}
+
+input CreateTicketInput {
+  """Assigned agent User pubId"""
+  assignedToUserPubId: String
+
+  """Optional conversation pubId"""
+  conversationPubId: String
+
+  """Customer pubId owning this ticket"""
+  customerPubId: String!
+
+  """Detailed issue description"""
+  description: String
+  priority: TicketPriority = MEDIUM
+  status: TicketStatus = OPEN
+
+  """Ticket title / subject"""
+  title: String!
+}
+
+input CustomerFilterInput {
+  """Search by name, email, or company"""
+  search: String
+}
+
+type CustomerResponseDto {
+  company: String
+  createdAt: DateTime!
+  email: String
+  id: Int!
+  name: String!
+  organizationPubId: String!
+  phone: String
+  pubId: String!
+  ticketCount: Int
+  updatedAt: DateTime!
+}
+
 """
 A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
 """
 scalar DateTime
 
+<<<<<<< Updated upstream
+=======
+type DeleteCustomerResponseDto {
+  message: String!
+  success: Boolean!
+}
+
+"""Response returned after deleting a label"""
+type DeleteLabelResponse {
+  """Status message"""
+  message: String!
+
+  """Whether deletion was successful"""
+  success: Boolean!
+}
+
+>>>>>>> Stashed changes
 """Response payload for deleting an organization"""
 type DeleteOrganizationResponse {
   """Status message"""
@@ -213,6 +342,40 @@ type DeleteTeamResponse {
   success: Boolean!
 }
 
+<<<<<<< Updated upstream
+=======
+type DeleteTicketCommentResponseDto {
+  message: String!
+  success: Boolean!
+}
+
+type DeleteTicketResponseDto {
+  message: String!
+  success: Boolean!
+}
+
+"""Type of task dependency relation"""
+enum DependencyType {
+  BLOCKS
+  RELATES_TO
+}
+
+"""Organization-level task label/tag"""
+type Label {
+  """Hex color code (e.g. #FF5733)"""
+  color: String!
+
+  """Label display name"""
+  name: String!
+
+  """Parent organization public identifier"""
+  organizationPubId: String!
+
+  """Unique public label identifier"""
+  pubId: String!
+}
+
+>>>>>>> Stashed changes
 """Input payload for user login"""
 input LoginInput {
   """Registered email address"""
@@ -240,6 +403,25 @@ type MemberActionResponse {
   success: Boolean!
 }
 
+type MessageResponseDto {
+  content: String!
+  conversationPubId: String!
+  createdAt: DateTime!
+  id: Int!
+  pubId: String!
+  sender: User
+  type: MessageType!
+}
+
+"""Payload type of a conversation message"""
+enum MessageType {
+  AI
+  FILE
+  IMAGE
+  SYSTEM
+  TEXT
+}
+
 type Mutation {
   """Add a new member to an organization (Requires OWNER or ADMIN role)"""
   addOrganizationMember(input: AddOrganizationMemberInput!): MemberActionResponse!
@@ -260,6 +442,24 @@ type Mutation {
   """Assign a role to an organization member (Requires OWNER or ADMIN role)"""
   assignRoleToMember(input: AssignRoleToMemberInput!): RoleActionResponse!
 
+<<<<<<< Updated upstream
+=======
+  """Assign a user to a task"""
+  assignTask(input: AssignTaskInput!): TaskActionResponse!
+
+  """Assign a ticket to a support agent"""
+  assignTicket(input: AssignTicketInput!): TicketResponseDto!
+
+  """Start a new conversation thread with a customer"""
+  createConversation(input: CreateConversationInput!): ConversationResponseDto!
+
+  """Create a new customer profile in an organization"""
+  createCustomer(input: CreateCustomerInput!): CustomerResponseDto!
+
+  """Create an organization-level task label"""
+  createLabel(input: CreateLabelInput!): Label!
+
+>>>>>>> Stashed changes
   """Create a new organization and assign the creator as OWNER"""
   createOrganization(input: CreateOrganizationInput!): Organization!
 
@@ -281,6 +481,24 @@ type Mutation {
   """
   createTeam(input: CreateTeamInput!): Team!
 
+<<<<<<< Updated upstream
+=======
+  """Create a support ticket for a customer"""
+  createTicket(input: CreateTicketInput!): TicketResponseDto!
+
+  """Add an internal comment to a support ticket"""
+  createTicketComment(input: CreateTicketCommentInput!): TicketCommentResponseDto!
+
+  """Delete a customer profile"""
+  deleteCustomer(pubId: String!): DeleteCustomerResponseDto!
+
+  """Delete a label from an organization"""
+  deleteLabel(
+    """Label pubId"""
+    pubId: String!
+  ): DeleteLabelResponse!
+
+>>>>>>> Stashed changes
   """Delete an organization (Requires OWNER role)"""
   deleteOrganization(
     """Organization pubId or slug"""
@@ -317,6 +535,12 @@ type Mutation {
     pubId: String!
   ): DeleteTeamResponse!
 
+  """Delete a support ticket"""
+  deleteTicket(pubId: String!): DeleteTicketResponseDto!
+
+  """Delete a comment from a support ticket"""
+  deleteTicketComment(commentPubId: String!): DeleteTicketCommentResponseDto!
+
   """Leave an organization as a member"""
   leaveOrganization(
     """Organization pubId or slug"""
@@ -351,6 +575,26 @@ type Mutation {
   """Remove a user from a team (Requires OWNER/ADMIN role or self-removal)"""
   removeTeamMember(input: RemoveTeamMemberInput!): TeamActionResponse!
 
+<<<<<<< Updated upstream
+=======
+  """Send a message in a conversation (broadcasts in real-time)"""
+  sendMessage(input: SendMessageInput!): MessageResponseDto!
+
+  """Unassign a user from a task"""
+  unassignTask(input: UnassignTaskInput!): TaskActionResponse!
+
+  """Update customer contact information"""
+  updateCustomer(input: UpdateCustomerInput!, pubId: String!): CustomerResponseDto!
+
+  """Update a label name or color"""
+  updateLabel(
+    input: UpdateLabelInput!
+
+    """Label pubId"""
+    pubId: String!
+  ): Label!
+
+>>>>>>> Stashed changes
   """Update organization details (Requires OWNER or ADMIN role)"""
   updateOrganization(
     input: UpdateOrganizationInput!
@@ -397,6 +641,12 @@ type Mutation {
     """Team pubId"""
     pubId: String!
   ): Team!
+
+  """Update ticket title, status, priority, or assignment"""
+  updateTicket(input: UpdateTicketInput!, pubId: String!): TicketResponseDto!
+
+  """Edit your ticket comment"""
+  updateTicketComment(commentPubId: String!, input: UpdateTicketCommentInput!): TicketCommentResponseDto!
 }
 
 """Organization details"""
@@ -562,6 +812,21 @@ enum ProjectStatus {
 }
 
 type Query {
+  """Get conversation thread with participants and messages"""
+  conversation(pubId: String!): ConversationResponseDto!
+
+  """Get customer details by pubId"""
+  customer(
+    """Customer pubId"""
+    pubId: String!
+  ): CustomerResponseDto!
+
+  """List all conversations for a customer"""
+  customerConversations(customerPubId: String!): [ConversationResponseDto!]!
+
+  """List customers in an organization"""
+  customers(filter: CustomerFilterInput, organizationPubId: String!): [CustomerResponseDto!]!
+
   """Fetch current logged in user profile"""
   me: User!
 
@@ -653,6 +918,18 @@ type Query {
     """Team pubId"""
     teamPubId: String!
   ): [Project!]!
+
+  """Get ticket details with comments and assignee"""
+  ticket(
+    """Ticket pubId"""
+    pubId: String!
+  ): TicketResponseDto!
+
+  """List all comments on a support ticket"""
+  ticketComments(ticketPubId: String!): [TicketCommentResponseDto!]!
+
+  """List support tickets in an organization with filters"""
+  tickets(filter: TicketFilterInput, organizationPubId: String!): [TicketResponseDto!]!
 
   """Fetch projects that the authenticated user is assigned to as a member"""
   userProjects(
@@ -760,6 +1037,202 @@ type RoleActionResponse {
   success: Boolean!
 }
 
+<<<<<<< Updated upstream
+=======
+input SendMessageInput {
+  content: String!
+  conversationPubId: String!
+  type: MessageType = TEXT
+}
+
+"""Project sprint / milestone iteration"""
+type Sprint {
+  """Creation timestamp"""
+  createdAt: DateTime!
+
+  """Sprint end date"""
+  endDate: DateTime!
+
+  """Sprint goal or milestone objective"""
+  goal: String
+
+  """Sprint name (e.g. Sprint 1 - Core Features)"""
+  name: String!
+
+  """Parent project details"""
+  project: Project
+
+  """Parent project public identifier"""
+  projectPubId: String!
+
+  """Unique public sprint identifier"""
+  pubId: String!
+
+  """Sprint start date"""
+  startDate: DateTime!
+
+  """Sprint lifecycle status"""
+  status: SprintStatus!
+
+  """Total tasks in this sprint"""
+  taskCount: Int!
+
+  """Tasks included in this sprint"""
+  tasks: [Task!]
+
+  """Last update timestamp"""
+  updatedAt: DateTime!
+}
+
+"""Lifecycle status of a sprint"""
+enum SprintStatus {
+  ACTIVE
+  COMPLETED
+  PLANNED
+}
+
+"""Task issue item details"""
+type Task {
+  """Users assigned to this task"""
+  assignees: [TaskAssignee!]
+
+  """Tasks blocked by this task"""
+  blockedBy: [TaskDependency!]
+
+  """Comments posted on this task"""
+  comments: [TaskComment!]
+
+  """Creation timestamp"""
+  createdAt: DateTime!
+
+  """Task creator user details"""
+  creator: User
+
+  """Tasks that this task depends on"""
+  dependencies: [TaskDependency!]
+
+  """Detailed description or markdown content"""
+  description: String
+
+  """Task due date and time"""
+  dueDate: DateTime
+
+  """Labels attached to this task"""
+  labels: [Label!]
+
+  """Parent task public identifier if this is a subtask"""
+  parentTaskPubId: String
+
+  """Kanban/board position order"""
+  position: Float!
+
+  """Task priority level"""
+  priority: TaskPriority!
+
+  """Parent project details"""
+  project: Project
+
+  """Parent project public identifier"""
+  projectPubId: String!
+
+  """Unique public task identifier"""
+  pubId: String!
+
+  """Current task lifecycle status"""
+  status: TaskStatus!
+
+  """Subtasks under this task"""
+  subTasks: [Task!]
+
+  """Task summary title"""
+  title: String!
+
+  """Last update timestamp"""
+  updatedAt: DateTime!
+}
+
+"""Response returned after performing task actions"""
+type TaskActionResponse {
+  """Status message"""
+  message: String!
+
+  """Whether the action was successful"""
+  success: Boolean!
+}
+
+"""Task assignee user relationship"""
+type TaskAssignee {
+  """Timestamp when user was assigned"""
+  assignedAt: DateTime!
+
+  """Unique public assignee record identifier"""
+  pubId: String!
+
+  """Task public identifier"""
+  taskPubId: String!
+
+  """Assigned user details"""
+  user: User
+}
+
+"""Task comment item"""
+type TaskComment {
+  """Author user details"""
+  author: User
+
+  """Comment markdown/text content"""
+  content: String!
+
+  """Creation timestamp"""
+  createdAt: DateTime!
+
+  """Unique public comment identifier"""
+  pubId: String!
+
+  """Task public identifier"""
+  taskPubId: String!
+
+  """Last update timestamp"""
+  updatedAt: DateTime!
+}
+
+"""Task dependency/blocker relationship"""
+type TaskDependency {
+  """Creation timestamp"""
+  createdAt: DateTime!
+
+  """Target dependent task public identifier"""
+  dependsOnTaskPubId: String!
+
+  """Unique public dependency identifier"""
+  pubId: String!
+
+  """Source task public identifier"""
+  taskPubId: String!
+
+  """Dependency relationship type"""
+  type: DependencyType!
+}
+
+"""Priority level of a task"""
+enum TaskPriority {
+  HIGH
+  LOW
+  MEDIUM
+  URGENT
+}
+
+"""Lifecycle status of a task"""
+enum TaskStatus {
+  BACKLOG
+  CANCELLED
+  DONE
+  IN_PROGRESS
+  IN_REVIEW
+  TODO
+}
+
+>>>>>>> Stashed changes
 """Team details"""
 type Team {
   """Creation timestamp"""
@@ -813,6 +1286,85 @@ type TeamMember {
   user: User
 }
 
+<<<<<<< Updated upstream
+=======
+type TicketCommentResponseDto {
+  author: User
+  content: String!
+  createdAt: DateTime!
+  id: Int!
+  pubId: String!
+  ticketPubId: String!
+  updatedAt: DateTime!
+}
+
+input TicketFilterInput {
+  assignedToUserPubId: String
+  customerPubId: String
+  priority: TicketPriority
+  search: String
+  status: TicketStatus
+}
+
+"""Priority level of a customer support ticket"""
+enum TicketPriority {
+  HIGH
+  LOW
+  MEDIUM
+  URGENT
+}
+
+type TicketResponseDto {
+  assignedTo: User
+  comments: [TicketCommentResponseDto!]
+  commentsCount: Int
+  createdAt: DateTime!
+  customer: CustomerResponseDto
+  customerPubId: String!
+  description: String
+  id: Int!
+  priority: TicketPriority!
+  pubId: String!
+  resolvedAt: DateTime
+  status: TicketStatus!
+  title: String!
+  updatedAt: DateTime!
+}
+
+"""Lifecycle status of a customer support ticket"""
+enum TicketStatus {
+  CLOSED
+  IN_PROGRESS
+  OPEN
+  RESOLVED
+}
+
+"""Input payload for unassigning a user from a task"""
+input UnassignTaskInput {
+  """Task unique pubId"""
+  taskPubId: String!
+
+  """User identifier (pubId or email)"""
+  userPubId: String!
+}
+
+input UpdateCustomerInput {
+  company: String
+  email: String
+  name: String
+  phone: String
+}
+
+"""Input payload for updating a label"""
+input UpdateLabelInput {
+  """Updated hex color code"""
+  color: String
+
+  """Updated label name"""
+  name: String
+}
+
+>>>>>>> Stashed changes
 """Input payload for updating a member role"""
 input UpdateMemberRoleInput {
   """Organization identifier (pubId, slug, or ID)"""
@@ -892,6 +1444,19 @@ input UpdateTeamInput {
 
   """New team name"""
   name: String
+}
+
+input UpdateTicketCommentInput {
+  commentPubId: String!
+  content: String!
+}
+
+input UpdateTicketInput {
+  assignedToUserPubId: String
+  description: String
+  priority: TicketPriority
+  status: TicketStatus
+  title: String
 }
 
 """Sanitized user profile information"""

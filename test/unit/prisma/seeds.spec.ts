@@ -32,6 +32,12 @@ import {
   SEED_TASKS,
   SEED_DEPENDENCIES,
 } from '../../../src/prisma/seeds/task.seed.js';
+import {
+  seedCrm,
+  SEED_CUSTOMERS,
+  SEED_TICKETS,
+  SEED_CONVERSATIONS,
+} from '../../../src/prisma/seeds/crm.seed.js';
 import { runSeeds } from '../../../src/prisma/seeds/seed.js';
 
 describe('Prisma Seed Modules', () => {
@@ -56,6 +62,12 @@ describe('Prisma Seed Modules', () => {
   let mockTaskAssigneeModel: any;
   let mockTaskCommentModel: any;
   let mockTaskDependencyModel: any;
+  let mockCustomerModel: any;
+  let mockTicketModel: any;
+  let mockTicketCommentModel: any;
+  let mockConversationModel: any;
+  let mockConversationParticipantModel: any;
+  let mockMessageModel: any;
 
   beforeEach(() => {
     mockUserModel = {
@@ -326,6 +338,28 @@ describe('Prisma Seed Modules', () => {
       ),
     };
 
+    const makeStandardModel = () => ({
+      all: vi.fn().mockResolvedValue([]),
+      first: vi.fn().mockResolvedValue(null),
+      where: vi.fn().mockReturnValue({
+        first: vi.fn().mockResolvedValue(null),
+        all: vi.fn().mockResolvedValue([]),
+      }),
+      create: vi.fn().mockImplementation((data) =>
+        Promise.resolve({
+          id: Math.floor(Math.random() * 1000) + 1,
+          ...data,
+        }),
+      ),
+    });
+
+    mockCustomerModel = makeStandardModel();
+    mockTicketModel = makeStandardModel();
+    mockTicketCommentModel = makeStandardModel();
+    mockConversationModel = makeStandardModel();
+    mockConversationParticipantModel = makeStandardModel();
+    mockMessageModel = makeStandardModel();
+
     // Attach mock models to db.orm
     (db as any).orm = {
       User: mockUserModel,
@@ -349,6 +383,12 @@ describe('Prisma Seed Modules', () => {
       TaskAssignee: mockTaskAssigneeModel,
       TaskComment: mockTaskCommentModel,
       TaskDependency: mockTaskDependencyModel,
+      Customer: mockCustomerModel,
+      Ticket: mockTicketModel,
+      TicketComment: mockTicketCommentModel,
+      Conversation: mockConversationModel,
+      ConversationParticipant: mockConversationParticipantModel,
+      Message: mockMessageModel,
     };
   });
 
@@ -604,6 +644,38 @@ describe('Prisma Seed Modules', () => {
     });
   });
 
+  describe('CRM Seed', () => {
+    it('should create customers, tickets, comments, and conversations', async () => {
+      mockOrgModel.all.mockResolvedValue([
+        { id: 1, pubId: 'org_1', name: 'Nexora Labs', slug: 'nexora-labs' },
+        { id: 2, pubId: 'org_2', name: 'Acme Corporation', slug: 'acme-corp' },
+      ]);
+      mockUserModel.all.mockResolvedValue(
+        SEED_USERS.map((u, i) => ({
+          id: i + 1,
+          pubId: `usr_${i + 1}`,
+          email: u.email,
+        })),
+      );
+
+      const result = await seedCrm();
+
+      expect(result.customers).toHaveLength(SEED_CUSTOMERS.length);
+      expect(result.tickets).toHaveLength(SEED_TICKETS.length);
+      expect(result.conversations).toHaveLength(SEED_CONVERSATIONS.length);
+      expect(mockCustomerModel.create).toHaveBeenCalledTimes(
+        SEED_CUSTOMERS.length,
+      );
+      expect(mockTicketModel.create).toHaveBeenCalledTimes(SEED_TICKETS.length);
+      expect(mockTicketCommentModel.create).toHaveBeenCalled();
+      expect(mockConversationModel.create).toHaveBeenCalledTimes(
+        SEED_CONVERSATIONS.length,
+      );
+      expect(mockConversationParticipantModel.create).toHaveBeenCalled();
+      expect(mockMessageModel.create).toHaveBeenCalled();
+    });
+  });
+
   describe('Seed Runner (runSeeds)', () => {
     it('should run individual target seeds', async () => {
       await expect(runSeeds('user')).resolves.not.toThrow();
@@ -614,6 +686,7 @@ describe('Prisma Seed Modules', () => {
       await expect(runSeeds('team')).resolves.not.toThrow();
       await expect(runSeeds('project')).resolves.not.toThrow();
       await expect(runSeeds('task')).resolves.not.toThrow();
+      await expect(runSeeds('crm')).resolves.not.toThrow();
     });
 
     it('should run full suite when target is "all"', async () => {
