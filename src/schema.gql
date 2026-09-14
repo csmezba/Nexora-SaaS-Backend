@@ -2,6 +2,15 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
 # ------------------------------------------------------
 
+"""Input payload for attaching a label to a task"""
+input AddLabelToTaskInput {
+  """Label unique pubId"""
+  labelPubId: String!
+
+  """Task unique pubId"""
+  taskPubId: String!
+}
+
 """Input payload for adding a member to an organization"""
 input AddOrganizationMemberInput {
   """User email to add"""
@@ -24,6 +33,27 @@ input AddProjectMemberInput {
 
   """User identifier (pubId or email) to add to the project"""
   userPubId: String!
+}
+
+"""Input payload for adding a task to a sprint"""
+input AddSprintTaskInput {
+  """Sprint unique pubId"""
+  sprintPubId: String!
+
+  """Task unique pubId"""
+  taskPubId: String!
+}
+
+"""Input payload for creating a task dependency relationship"""
+input AddTaskDependencyInput {
+  """Target dependent task pubId"""
+  dependsOnTaskPubId: String!
+
+  """Source task pubId"""
+  taskPubId: String!
+
+  """Dependency relation type"""
+  type: DependencyType = BLOCKS
 }
 
 """Input payload for adding a user to a team"""
@@ -56,8 +86,6 @@ input AssignRoleToMemberInput {
   rolePubId: String!
 }
 
-<<<<<<< Updated upstream
-=======
 """Input payload for assigning a user to a task"""
 input AssignTaskInput {
   """Task unique pubId"""
@@ -73,7 +101,6 @@ input AssignTicketInput {
   ticketPubId: String!
 }
 
->>>>>>> Stashed changes
 """Authentication response payload containing tokens and user data"""
 type AuthResponse {
   """JWT Access Token"""
@@ -92,8 +119,6 @@ type AuthResponse {
   user: User!
 }
 
-<<<<<<< Updated upstream
-=======
 type ConversationResponseDto {
   createdAt: DateTime!
   customer: CustomerResponseDto
@@ -143,7 +168,6 @@ input CreateLabelInput {
   organizationPubId: String!
 }
 
->>>>>>> Stashed changes
 """Input payload for creating a new organization"""
 input CreateOrganizationInput {
   """Description or bio of the organization"""
@@ -218,6 +242,72 @@ input CreateRoleInput {
   permissionPubIds: [String!]
 }
 
+"""Input payload for creating a project sprint"""
+input CreateSprintInput {
+  """Sprint planned end date"""
+  endDate: DateTime!
+
+  """Sprint objective / milestone goal"""
+  goal: String
+
+  """Sprint name (e.g. Sprint 1 - Alpha MVP)"""
+  name: String!
+
+  """Project pubId where sprint belongs"""
+  projectPubId: String!
+
+  """Sprint planned start date"""
+  startDate: DateTime!
+
+  """Initial sprint status"""
+  status: SprintStatus = PLANNED
+}
+
+"""Input payload for adding a comment to a task"""
+input CreateTaskCommentInput {
+  """Comment markdown/text content"""
+  content: String!
+
+  """Task unique pubId"""
+  taskPubId: String!
+}
+
+"""Input payload for creating a new task"""
+input CreateTaskInput {
+  """User pubIds to assign to this task upon creation"""
+  assigneeUserPubIds: [String!]
+
+  """Detailed description or markdown"""
+  description: String
+
+  """Target due date"""
+  dueDate: DateTime
+
+  """Label pubIds to attach to this task upon creation"""
+  labelPubIds: [String!]
+
+  """Parent task pubId if creating a subtask"""
+  parentTaskPubId: String
+
+  """Position order on board"""
+  position: Float = 0
+
+  """Task priority level"""
+  priority: TaskPriority = MEDIUM
+
+  """Project pubId where task is created"""
+  projectPubId: String!
+
+  """Optional sprint pubId to add this task to"""
+  sprintPubId: String
+
+  """Initial task status"""
+  status: TaskStatus = TODO
+
+  """Task title summary"""
+  title: String!
+}
+
 """Input payload for creating a new team within an organization"""
 input CreateTeamInput {
   """Team description"""
@@ -280,8 +370,6 @@ A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date
 """
 scalar DateTime
 
-<<<<<<< Updated upstream
-=======
 type DeleteCustomerResponseDto {
   message: String!
   success: Boolean!
@@ -296,7 +384,6 @@ type DeleteLabelResponse {
   success: Boolean!
 }
 
->>>>>>> Stashed changes
 """Response payload for deleting an organization"""
 type DeleteOrganizationResponse {
   """Status message"""
@@ -333,6 +420,24 @@ type DeleteRoleResponse {
   success: Boolean!
 }
 
+"""Response returned after deleting a sprint"""
+type DeleteSprintResponse {
+  """Status message"""
+  message: String!
+
+  """Whether deletion was successful"""
+  success: Boolean!
+}
+
+"""Response returned after deleting a task"""
+type DeleteTaskResponse {
+  """Status message"""
+  message: String!
+
+  """Whether deletion was successful"""
+  success: Boolean!
+}
+
 """Response returned after deleting a team"""
 type DeleteTeamResponse {
   """Status message"""
@@ -342,8 +447,6 @@ type DeleteTeamResponse {
   success: Boolean!
 }
 
-<<<<<<< Updated upstream
-=======
 type DeleteTicketCommentResponseDto {
   message: String!
   success: Boolean!
@@ -375,7 +478,6 @@ type Label {
   pubId: String!
 }
 
->>>>>>> Stashed changes
 """Input payload for user login"""
 input LoginInput {
   """Registered email address"""
@@ -423,6 +525,9 @@ enum MessageType {
 }
 
 type Mutation {
+  """Attach a label to a task"""
+  addLabelToTask(input: AddLabelToTaskInput!): TaskActionResponse!
+
   """Add a new member to an organization (Requires OWNER or ADMIN role)"""
   addOrganizationMember(input: AddOrganizationMemberInput!): MemberActionResponse!
 
@@ -430,6 +535,12 @@ type Mutation {
   Add an organization member to a project (Requires OWNER, ADMIN, MANAGER, or project creator)
   """
   addProjectMember(input: AddProjectMemberInput!): ProjectActionResponse!
+
+  """Create a dependency/blocker relationship between two tasks"""
+  addTaskDependency(input: AddTaskDependencyInput!): TaskDependency!
+
+  """Add a task to a sprint"""
+  addTaskToSprint(input: AddSprintTaskInput!): TaskActionResponse!
 
   """Add a user to a team (Requires OWNER, ADMIN, or MANAGER role)"""
   addTeamMember(input: AddTeamMemberInput!): TeamActionResponse!
@@ -442,8 +553,6 @@ type Mutation {
   """Assign a role to an organization member (Requires OWNER or ADMIN role)"""
   assignRoleToMember(input: AssignRoleToMemberInput!): RoleActionResponse!
 
-<<<<<<< Updated upstream
-=======
   """Assign a user to a task"""
   assignTask(input: AssignTaskInput!): TaskActionResponse!
 
@@ -459,7 +568,6 @@ type Mutation {
   """Create an organization-level task label"""
   createLabel(input: CreateLabelInput!): Label!
 
->>>>>>> Stashed changes
   """Create a new organization and assign the creator as OWNER"""
   createOrganization(input: CreateOrganizationInput!): Organization!
 
@@ -476,13 +584,20 @@ type Mutation {
   """
   createRole(input: CreateRoleInput!): Role!
 
+  """Create a new sprint within a project"""
+  createSprint(input: CreateSprintInput!): Sprint!
+
+  """Create a new task within a project"""
+  createTask(input: CreateTaskInput!): Task!
+
+  """Post a comment on a task"""
+  createTaskComment(input: CreateTaskCommentInput!): TaskComment!
+
   """
   Create a new team within an organization (Requires OWNER, ADMIN, or MANAGER role)
   """
   createTeam(input: CreateTeamInput!): Team!
 
-<<<<<<< Updated upstream
-=======
   """Create a support ticket for a customer"""
   createTicket(input: CreateTicketInput!): TicketResponseDto!
 
@@ -498,7 +613,6 @@ type Mutation {
     pubId: String!
   ): DeleteLabelResponse!
 
->>>>>>> Stashed changes
   """Delete an organization (Requires OWNER role)"""
   deleteOrganization(
     """Organization pubId or slug"""
@@ -526,6 +640,24 @@ type Mutation {
     """Role pubId"""
     pubId: String!
   ): DeleteRoleResponse!
+
+  """Delete a sprint from a project"""
+  deleteSprint(
+    """Sprint pubId"""
+    pubId: String!
+  ): DeleteSprintResponse!
+
+  """Delete/archive a task"""
+  deleteTask(
+    """Task pubId"""
+    pubId: String!
+  ): DeleteTaskResponse!
+
+  """Delete a task comment"""
+  deleteTaskComment(
+    """Comment pubId"""
+    pubId: String!
+  ): TaskActionResponse!
 
   """
   Delete a team from an organization (Requires OWNER, ADMIN, or MANAGER role)
@@ -559,6 +691,9 @@ type Mutation {
   """Register a new user account"""
   register(input: RegisterInput!): AuthResponse!
 
+  """Detach a label from a task"""
+  removeLabelFromTask(input: RemoveLabelFromTaskInput!): TaskActionResponse!
+
   """Remove a member from an organization (Requires OWNER or ADMIN role)"""
   removeOrganizationMember(input: RemoveMemberInput!): MemberActionResponse!
 
@@ -572,11 +707,15 @@ type Mutation {
   """
   removeRoleFromMember(input: RemoveRoleFromMemberInput!): RoleActionResponse!
 
+  """Remove a task dependency relationship"""
+  removeTaskDependency(input: RemoveTaskDependencyInput!): TaskActionResponse!
+
+  """Remove a task from a sprint"""
+  removeTaskFromSprint(input: RemoveSprintTaskInput!): TaskActionResponse!
+
   """Remove a user from a team (Requires OWNER/ADMIN role or self-removal)"""
   removeTeamMember(input: RemoveTeamMemberInput!): TeamActionResponse!
 
-<<<<<<< Updated upstream
-=======
   """Send a message in a conversation (broadcasts in real-time)"""
   sendMessage(input: SendMessageInput!): MessageResponseDto!
 
@@ -594,7 +733,6 @@ type Mutation {
     pubId: String!
   ): Label!
 
->>>>>>> Stashed changes
   """Update organization details (Requires OWNER or ADMIN role)"""
   updateOrganization(
     input: UpdateOrganizationInput!
@@ -633,6 +771,33 @@ type Mutation {
     """Role pubId"""
     pubId: String!
   ): Role!
+
+  """Update sprint details and milestone timeline"""
+  updateSprint(
+    input: UpdateSprintInput!
+
+    """Sprint pubId"""
+    pubId: String!
+  ): Sprint!
+
+  """Update task details"""
+  updateTask(
+    input: UpdateTaskInput!
+
+    """Task pubId"""
+    pubId: String!
+  ): Task!
+
+  """Update an existing comment"""
+  updateTaskComment(
+    input: UpdateTaskCommentInput!
+
+    """Comment pubId"""
+    pubId: String!
+  ): TaskComment!
+
+  """Update task board position and optional status column"""
+  updateTaskPosition(input: UpdateTaskPositionInput!): Task!
 
   """Update team details (Requires OWNER, ADMIN, or MANAGER role)"""
   updateTeam(
@@ -845,6 +1010,12 @@ type Query {
     slug: String!
   ): Organization!
 
+  """Fetch all labels defined in an organization"""
+  organizationLabels(
+    """Organization pubId or slug"""
+    organizationPubId: String!
+  ): [Label!]!
+
   """Fetch custom roles assigned to an organization member"""
   organizationMemberRoles(
     """Member pubId"""
@@ -895,11 +1066,53 @@ type Query {
     projectPubId: String!
   ): [ProjectMember!]!
 
+  """Fetch all sprints belonging to a project"""
+  projectSprints(
+    """Project pubId"""
+    projectPubId: String!
+
+    """Filter by sprint status"""
+    status: SprintStatus
+  ): [Sprint!]!
+
+  """Fetch all tasks belonging to a project with optional filters"""
+  projectTasks(
+    """Filter by task priority"""
+    priority: TaskPriority
+
+    """Project unique pubId"""
+    projectPubId: String!
+
+    """Filter by sprint pubId"""
+    sprintPubId: String
+
+    """Filter by task status"""
+    status: TaskStatus
+  ): [Task!]!
+
   """Fetch role details with permissions by unique pubId"""
   role(
     """Role pubId"""
     pubId: String!
   ): Role!
+
+  """Fetch sprint details by pubId"""
+  sprint(
+    """Sprint pubId"""
+    pubId: String!
+  ): Sprint!
+
+  """Fetch task details by unique pubId"""
+  task(
+    """Task pubId"""
+    pubId: String!
+  ): Task!
+
+  """Fetch all comments for a task"""
+  taskComments(
+    """Task pubId"""
+    taskPubId: String!
+  ): [TaskComment!]!
 
   """Fetch team details by unique team pubId"""
   team(
@@ -937,6 +1150,12 @@ type Query {
     organizationPubId: String
   ): [Project!]!
 
+  """Fetch tasks assigned to the authenticated user"""
+  userTasks(
+    """Filter by task status"""
+    status: TaskStatus
+  ): [Task!]!
+
   """Fetch teams that the authenticated user is a member of"""
   userTeams(
     """Optional organization filter (pubId or slug)"""
@@ -963,6 +1182,15 @@ input RegisterInput {
 
   """Password (minimum 6 characters)"""
   password: String!
+}
+
+"""Input payload for detaching a label from a task"""
+input RemoveLabelFromTaskInput {
+  """Label unique pubId"""
+  labelPubId: String!
+
+  """Task unique pubId"""
+  taskPubId: String!
 }
 
 """Input payload for removing a member from an organization"""
@@ -993,6 +1221,24 @@ input RemoveRoleFromMemberInput {
 
   """Role pubId"""
   rolePubId: String!
+}
+
+"""Input payload for removing a task from a sprint"""
+input RemoveSprintTaskInput {
+  """Sprint unique pubId"""
+  sprintPubId: String!
+
+  """Task unique pubId"""
+  taskPubId: String!
+}
+
+"""Input payload for removing a task dependency relationship"""
+input RemoveTaskDependencyInput {
+  """Target dependent task pubId"""
+  dependsOnTaskPubId: String!
+
+  """Source task pubId"""
+  taskPubId: String!
 }
 
 """Input payload for removing a user from a team"""
@@ -1037,8 +1283,6 @@ type RoleActionResponse {
   success: Boolean!
 }
 
-<<<<<<< Updated upstream
-=======
 input SendMessageInput {
   content: String!
   conversationPubId: String!
@@ -1232,7 +1476,6 @@ enum TaskStatus {
   TODO
 }
 
->>>>>>> Stashed changes
 """Team details"""
 type Team {
   """Creation timestamp"""
@@ -1286,8 +1529,6 @@ type TeamMember {
   user: User
 }
 
-<<<<<<< Updated upstream
-=======
 type TicketCommentResponseDto {
   author: User
   content: String!
@@ -1364,7 +1605,6 @@ input UpdateLabelInput {
   name: String
 }
 
->>>>>>> Stashed changes
 """Input payload for updating a member role"""
 input UpdateMemberRoleInput {
   """Organization identifier (pubId, slug, or ID)"""
@@ -1435,6 +1675,66 @@ input UpdateRoleInput {
 
   """Role display name"""
   name: String
+}
+
+"""Input payload for updating a sprint"""
+input UpdateSprintInput {
+  """Updated sprint end date"""
+  endDate: DateTime
+
+  """Updated sprint goal"""
+  goal: String
+
+  """Updated sprint name"""
+  name: String
+
+  """Updated sprint start date"""
+  startDate: DateTime
+
+  """Updated sprint status"""
+  status: SprintStatus
+}
+
+"""Input payload for updating a task comment"""
+input UpdateTaskCommentInput {
+  """Updated markdown/text content"""
+  content: String!
+}
+
+"""Input payload for updating an existing task"""
+input UpdateTaskInput {
+  """Updated task description"""
+  description: String
+
+  """Updated due date"""
+  dueDate: DateTime
+
+  """Updated parent task pubId (empty string to detach parent)"""
+  parentTaskPubId: String
+
+  """Updated position order on board"""
+  position: Float
+
+  """Updated task priority level"""
+  priority: TaskPriority
+
+  """Updated task lifecycle status"""
+  status: TaskStatus
+
+  """Updated task title"""
+  title: String
+}
+
+"""Input payload for moving/reordering a task on a Kanban board"""
+input UpdateTaskPositionInput {
+  """New position value"""
+  position: Float!
+
+  """Optional updated status column"""
+  status: TaskStatus
+
+  """Task unique pubId"""
+  taskPubId: String!
 }
 
 """Input payload for updating team details"""
