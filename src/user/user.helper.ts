@@ -81,7 +81,7 @@ export async function createUser(
   return userModel.create({
     pubId: generatePubId('usr'),
     email: data.email.toLowerCase().trim(),
-    passwordHash: data.passwordHash,
+    password: data.password,
     firstName: data.firstName ?? null,
     lastName: data.lastName ?? null,
     refreshTokenHash: null,
@@ -100,7 +100,7 @@ export async function updateUser(
     updatedAt: new Date().toISOString(),
   };
 
-  if (data.passwordHash !== undefined) updatePayload['passwordHash'] = data.passwordHash;
+  if (data.password !== undefined) updatePayload['password'] = data.password;
   if (data.firstName !== undefined) updatePayload['firstName'] = data.firstName;
   if (data.lastName !== undefined) updatePayload['lastName'] = data.lastName;
   if (data.refreshTokenHash !== undefined)
