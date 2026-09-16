@@ -151,7 +151,7 @@ export interface CreateConversationData {
 
 export interface CreateMessageData {
   conversationId: number;
-  senderId?: number;
+  senderId?: number | null;
   content: string;
   type?: MessageType;
   metadata?: any;

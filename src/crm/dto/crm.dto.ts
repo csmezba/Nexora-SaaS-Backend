@@ -441,3 +441,64 @@ export class ConversationResponseDto {
   @Field(() => Date)
   updatedAt!: Date;
 }
+
+// ==========================================
+// PUBLIC INQUIRY DTOs
+// ==========================================
+
+@InputType()
+export class PublicInquiryInput {
+  @Field(() => String, {
+    nullable: true,
+    description: 'Target organization pubId or slug (defaults to platform org)',
+  })
+  @IsOptional()
+  @IsString()
+  organizationPubId?: string;
+
+  @Field(() => String, {
+    nullable: true,
+    description: 'Existing conversation pubId if continuing an active chat session',
+  })
+  @IsOptional()
+  @IsString()
+  conversationPubId?: string;
+
+  @Field(() => String, { description: 'Visitor full name' })
+  @IsNotEmpty()
+  @IsString()
+  @MaxLength(120)
+  name!: string;
+
+  @Field(() => String, { description: 'Visitor email address' })
+  @IsNotEmpty()
+  @IsEmail()
+  email!: string;
+
+  @Field(() => String, { nullable: true, description: 'Visitor phone number' })
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @Field(() => String, { description: 'Inquiry message content' })
+  @IsNotEmpty()
+  @IsString()
+  @MaxLength(5000)
+  content!: string;
+}
+
+@ObjectType()
+export class PublicInquiryResponseDto {
+  @Field(() => Boolean)
+  success!: boolean;
+
+  @Field(() => String)
+  customerPubId!: string;
+
+  @Field(() => String)
+  conversationPubId!: string;
+
+  @Field(() => String)
+  messagePubId!: string;
+}
+

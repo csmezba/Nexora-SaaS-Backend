@@ -11,7 +11,6 @@ import * as CrmHelper from './crm.helper.js';
 import * as OrgHelper from '../organization/organization.helper.js';
 import * as UserHelper from '../user/user.helper.js';
 import { OrganizationRole } from '../organization/enums/organization-role.enum.js';
-import { TicketStatus } from './enums/ticket-status.enum.js';
 import type {
   AssignTicketInput,
   ConversationResponseDto,
@@ -25,6 +24,8 @@ import type {
   DeleteTicketCommentResponseDto,
   DeleteTicketResponseDto,
   MessageResponseDto,
+  PublicInquiryInput,
+  PublicInquiryResponseDto,
   SendMessageInput,
   TicketCommentResponseDto,
   TicketFilterInput,
@@ -583,7 +584,7 @@ export class CrmService {
 
   async getConversation(
     pubId: string,
-    userId: number,
+    userId?: number | null,
   ): Promise<ConversationResponseDto> {
     const conv = await this.resolveConversation(pubId);
     const customer = await CrmHelper.findCustomerById(
@@ -592,7 +593,9 @@ export class CrmService {
     );
     if (!customer) throw new NotFoundException('Customer not found');
 
-    await this.ensureOrgMember(customer.organizationId, userId);
+    if (userId) {
+      await this.ensureOrgMember(customer.organizationId, userId);
+    }
     const org = await OrgHelper.findOrgById(this.prisma, customer.organizationId);
 
     return this.mapConversationToDto(conv, org?.pubId ?? '');
@@ -646,6 +649,107 @@ export class CrmService {
     );
 
     return dto;
+  }
+
+  // ==========================================
+  // PUBLIC INQUIRY
+  // ==========================================
+
+  async sendPublicInquiry(
+    input: PublicInquiryInput,
+  ): Promise<PublicInquiryResponseDto> {
+    // 1. Resolve target organization
+    let org = null;
+    if (input.organizationPubId) {
+      org = await OrgHelper.findByPubIdOrSlug(
+        this.prisma,
+        input.organizationPubId,
+      );
+    }
+
+    if (!org) {
+      const defaultSlug = process.env.DEFAULT_ORG_SLUG || 'nexora-labs';
+      org = await OrgHelper.findByPubIdOrSlug(this.prisma, defaultSlug);
+    }
+
+    if (!org) {
+      const orgModel = OrgHelper.getOrgModel(this.prisma);
+      org = await orgModel.first();
+    }
+
+    if (!org) {
+      throw new NotFoundException('Target organization could not be resolved');
+    }
+
+    // 2. Find or create customer in target organization
+    let customer = await CrmHelper.findCustomerByEmailInOrg(
+      this.prisma,
+      org.id,
+      input.email,
+    );
+
+    if (!customer) {
+      customer = await CrmHelper.createCustomer(this.prisma, {
+        organizationId: org.id,
+        name: input.name,
+        email: input.email,
+        phone: input.phone,
+      });
+    }
+
+    // 3. Find or create conversation thread
+    let conv: ConversationWithDetails | null = null;
+    let isNewConv = false;
+
+    if (input.conversationPubId) {
+      const existingConv = await CrmHelper.findConversationByPubId(
+        this.prisma,
+        input.conversationPubId,
+      );
+      if (existingConv && existingConv.customerId === customer.id) {
+        conv = existingConv;
+      }
+    }
+
+    if (!conv) {
+      isNewConv = true;
+      conv = await CrmHelper.createConversation(this.prisma, {
+        customerId: customer.id,
+        title: `Homepage Inquiry - ${customer.name}`,
+      });
+    }
+
+    // 4. Create customer message (senderId: null signifies customer message)
+    const message = await CrmHelper.createMessage(this.prisma, {
+      conversationId: conv.id,
+      senderId: null,
+      content: input.content,
+    });
+
+    const msgDto = this.mapMessageToDto(message, conv.pubId);
+
+    // 5. Real-time broadcasts
+    if (isNewConv) {
+      const convDto = this.mapConversationToDto(conv, org.pubId);
+      await this.realtimeService.emit(
+        `org:${org.pubId}:conversations`,
+        'conversation:created',
+        convDto,
+      );
+    }
+
+    await this.realtimeService.emit(
+      `conversation:${conv.pubId}`,
+      'message:created',
+      msgDto,
+    );
+
+    return {
+      success: true,
+      customerPubId: customer.pubId,
+      conversationPubId: conv.pubId,
+      messagePubId: message.pubId,
+    };
   }
 
   // ==========================================

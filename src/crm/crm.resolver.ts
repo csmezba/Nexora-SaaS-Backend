@@ -2,6 +2,7 @@ import { UseGuards } from '@nestjs/common';
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import { Public } from '../auth/decorators/public.decorator.js';
 import { CrmService } from './crm.service.js';
 import {
   AssignTicketInput,
@@ -16,6 +17,8 @@ import {
   DeleteTicketCommentResponseDto,
   DeleteTicketResponseDto,
   MessageResponseDto,
+  PublicInquiryInput,
+  PublicInquiryResponseDto,
   SendMessageInput,
   TicketCommentResponseDto,
   TicketFilterInput,
@@ -222,13 +225,14 @@ export class CrmResolver {
   // CONVERSATION & MESSAGE QUERIES & MUTATIONS
   // ==========================================
 
+  @Public()
   @Query(() => ConversationResponseDto, {
     name: 'conversation',
     description: 'Get conversation thread with participants and messages',
   })
   async conversation(
     @Args('pubId', { type: () => String }) pubId: string,
-    @CurrentUser('id') userId: number,
+    @CurrentUser('id') userId?: number | null,
   ): Promise<ConversationResponseDto> {
     return this.crmService.getConversation(pubId, userId);
   }
@@ -264,5 +268,17 @@ export class CrmResolver {
     @Args('input') input: SendMessageInput,
   ): Promise<MessageResponseDto> {
     return this.crmService.sendMessage(userId, input);
+  }
+
+  @Mutation(() => PublicInquiryResponseDto, {
+    name: 'sendPublicInquiry',
+    description:
+      'Submit an inquiry from public marketing homepage or widget without authentication',
+  })
+  @Public()
+  async sendPublicInquiry(
+    @Args('input') input: PublicInquiryInput,
+  ): Promise<PublicInquiryResponseDto> {
+    return this.crmService.sendPublicInquiry(input);
   }
 }

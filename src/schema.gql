@@ -719,6 +719,11 @@ type Mutation {
   """Send a message in a conversation (broadcasts in real-time)"""
   sendMessage(input: SendMessageInput!): MessageResponseDto!
 
+  """
+  Submit an inquiry from public marketing homepage or widget without authentication
+  """
+  sendPublicInquiry(input: PublicInquiryInput!): PublicInquiryResponseDto!
+
   """Unassign a user from a task"""
   unassignTask(input: UnassignTaskInput!): TaskActionResponse!
 
@@ -974,6 +979,33 @@ enum ProjectStatus {
   COMPLETED
   ON_HOLD
   PLANNING
+}
+
+input PublicInquiryInput {
+  """Inquiry message content"""
+  content: String!
+
+  """Existing conversation pubId if continuing an active chat session"""
+  conversationPubId: String
+
+  """Visitor email address"""
+  email: String!
+
+  """Visitor full name"""
+  name: String!
+
+  """Target organization pubId or slug (defaults to platform org)"""
+  organizationPubId: String
+
+  """Visitor phone number"""
+  phone: String
+}
+
+type PublicInquiryResponseDto {
+  conversationPubId: String!
+  customerPubId: String!
+  messagePubId: String!
+  success: Boolean!
 }
 
 type Query {

@@ -161,6 +161,26 @@ export async function findCustomerByPubId(
   return record || null;
 }
 
+export async function findCustomerByEmailInOrg(
+  prisma: PrismaService,
+  organizationId: number,
+  email: string,
+): Promise<PrismaCustomerRecord | null> {
+  const model = getCustomerModel(prisma);
+  const normalizedEmail = email.trim().toLowerCase();
+  const records = await model
+    .where((c: { organizationId: { eq: (val: number) => unknown } }) =>
+      c.organizationId.eq(organizationId),
+    )
+    .all();
+
+  return (
+    (records || []).find(
+      (c) => c.email && c.email.trim().toLowerCase() === normalizedEmail,
+    ) || null
+  );
+}
+
 export async function listCustomersByOrg(
   prisma: PrismaService,
   organizationId: number,
