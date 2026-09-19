@@ -8,7 +8,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service.js';
+import { PrismaService, runTransaction } from '../prisma/prisma.service.js';
 import { OrganizationRole } from '../organization/enums/organization-role.enum.js';
 import * as OrgHelper from '../organization/organization.helper.js';
 import * as UserHelper from '../user/user.helper.js';
@@ -169,51 +169,68 @@ export class TaskService {
         parentTaskId = parentTask.id;
       }
 
-      const task = await TaskHelper.createTask(this.prisma, {
-        projectId: project.id,
-        createdById: userId,
-        parentTaskId,
-        title: input.title,
-        description: input.description,
-        status: input.status ?? TaskStatus.TODO,
-        priority: input.priority ?? TaskPriority.MEDIUM,
-        position: input.position ?? 0,
-        dueDate: input.dueDate,
-      });
-
-      // Initial assignees
+      // Pre-resolve assignees, labels, sprint before transaction
+      const resolvedAssigneeIds: number[] = [];
       if (input.assigneeUserPubIds && input.assigneeUserPubIds.length > 0) {
         for (const userPubId of input.assigneeUserPubIds) {
           try {
             const user = await this.resolveUser(userPubId);
-            await TaskHelper.assignUserToTask(this.prisma, task.id, user.id);
+            resolvedAssigneeIds.push(user.id);
           } catch (err) {
-            this.logger.warn(`Failed to assign user ${userPubId}: ${err}`);
+            this.logger.warn(`Failed to resolve user ${userPubId}: ${err}`);
           }
         }
       }
 
-      // Initial labels
+      const resolvedLabelIds: number[] = [];
       if (input.labelPubIds && input.labelPubIds.length > 0) {
         for (const labelPubId of input.labelPubIds) {
           try {
             const label = await this.resolveLabel(labelPubId);
             if (label.organizationId === project.organizationId) {
-              await TaskHelper.addLabelToTask(this.prisma, task.id, label.id);
+              resolvedLabelIds.push(label.id);
             }
           } catch (err) {
-            this.logger.warn(`Failed to add label ${labelPubId}: ${err}`);
+            this.logger.warn(`Failed to resolve label ${labelPubId}: ${err}`);
           }
         }
       }
 
-      // Initial sprint
+      let resolvedSprintId: number | null = null;
       if (input.sprintPubId) {
         const sprint = await this.resolveSprint(input.sprintPubId);
         if (sprint.projectId === project.id) {
-          await TaskHelper.addTaskToSprint(this.prisma, sprint.id, task.id);
+          resolvedSprintId = sprint.id;
         }
       }
+
+      const task = await runTransaction(this.prisma, async (tx) => {
+        const createdTask = await TaskHelper.createTask(tx, {
+          projectId: project.id,
+          createdById: userId,
+          parentTaskId,
+          title: input.title,
+          description: input.description,
+          status: input.status ?? TaskStatus.TODO,
+          priority: input.priority ?? TaskPriority.MEDIUM,
+          position: input.position ?? 0,
+          dueDate: input.dueDate,
+        });
+
+        for (const assigneeUserId of resolvedAssigneeIds) {
+          await TaskHelper.assignUserToTask(tx, createdTask.id, assigneeUserId);
+        }
+
+        for (const labelId of resolvedLabelIds) {
+          await TaskHelper.addLabelToTask(tx, createdTask.id, labelId);
+        }
+
+        if (resolvedSprintId) {
+          await TaskHelper.addTaskToSprint(tx, resolvedSprintId, createdTask.id);
+        }
+
+        return createdTask;
+      });
 
       const freshTask = await TaskHelper.findTaskById(this.prisma, task.id);
       return this.mapTaskToDto(freshTask!);

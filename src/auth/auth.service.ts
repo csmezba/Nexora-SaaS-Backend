@@ -8,7 +8,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { PrismaService } from '../prisma/prisma.service.js';
+import { PrismaService, runTransaction } from '../prisma/prisma.service.js';
 import * as UserHelper from '../user/user.helper.js';
 import * as AuthHelper from './auth.helper.js';
 import type { TokenPayload } from './types/auth.types.js';
@@ -39,26 +39,30 @@ export class AuthService {
       }
 
       const password = await AuthHelper.hashPassword(dto.password);
-      const user = await UserHelper.createUser(this.prisma, {
-        email: dto.email,
-        password,
-        firstName: dto.firstName,
-        lastName: dto.lastName,
+      const { user, tokens } = await runTransaction(this.prisma, async (tx) => {
+        const createdUser = await UserHelper.createUser(tx, {
+          email: dto.email,
+          password,
+          firstName: dto.firstName,
+          lastName: dto.lastName,
+        });
+
+        const tokenPayload: TokenPayload = {
+          sub: createdUser.id,
+          email: createdUser.email,
+        };
+
+        const generatedTokens = await AuthHelper.generateTokens(
+          this.jwtService,
+          tokenPayload,
+        );
+        const refreshTokenHash = await AuthHelper.hashPassword(
+          generatedTokens.refreshToken,
+        );
+        await UserHelper.updateUser(tx, createdUser.id, { refreshTokenHash });
+
+        return { user: createdUser, tokens: generatedTokens };
       });
-
-      const tokenPayload: TokenPayload = {
-        sub: user.id,
-        email: user.email,
-      };
-
-      const tokens = await AuthHelper.generateTokens(
-        this.jwtService,
-        tokenPayload,
-      );
-      const refreshTokenHash = await AuthHelper.hashPassword(
-        tokens.refreshToken,
-      );
-      await UserHelper.updateUser(this.prisma, user.id, { refreshTokenHash });
 
       return {
         user: UserHelper.sanitizeUser(user),

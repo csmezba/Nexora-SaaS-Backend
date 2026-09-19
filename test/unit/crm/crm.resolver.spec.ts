@@ -29,6 +29,9 @@ describe('CrmResolver', () => {
       listCustomerConversations: vi.fn(),
       createConversation: vi.fn(),
       sendMessage: vi.fn(),
+      getUnreadCount: vi.fn(),
+      getOnlineUsers: vi.fn(),
+      markConversationAsRead: vi.fn(),
     };
 
     resolver = new CrmResolver(mockCrmService as CrmService);
@@ -78,5 +81,29 @@ describe('CrmResolver', () => {
     const res = await resolver.sendMessage(5, input);
     expect(mockCrmService.sendMessage).toHaveBeenCalledWith(5, input);
     expect(res.pubId).toBe('msg_123');
+  });
+
+  it('should delegate unreadMessageCount query to service with userId', async () => {
+    vi.mocked(mockCrmService.getUnreadCount!).mockResolvedValue(3);
+
+    const res = await resolver.unreadMessageCount('cnv_123', 5);
+    expect(mockCrmService.getUnreadCount).toHaveBeenCalledWith('cnv_123', 5);
+    expect(res).toBe(3);
+  });
+
+  it('should delegate onlineUsers query to service with userId', async () => {
+    vi.mocked(mockCrmService.getOnlineUsers!).mockResolvedValue(['usr_1', 'usr_2']);
+
+    const res = await resolver.onlineUsers('org_123', 5);
+    expect(mockCrmService.getOnlineUsers).toHaveBeenCalledWith('org_123', 5);
+    expect(res).toEqual(['usr_1', 'usr_2']);
+  });
+
+  it('should delegate markConversationAsRead mutation to service with userId', async () => {
+    vi.mocked(mockCrmService.markConversationAsRead!).mockResolvedValue(true);
+
+    const res = await resolver.markConversationAsRead('cnv_123', 5);
+    expect(mockCrmService.markConversationAsRead).toHaveBeenCalledWith('cnv_123', 5);
+    expect(res).toBe(true);
   });
 });

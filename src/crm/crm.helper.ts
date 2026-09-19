@@ -31,8 +31,8 @@ import type {
 // MODEL ACCESSORS
 // ==========================================
 
-function getModel<T>(prisma: PrismaService, name: string): PrismaOrmModel<T> {
-  const orm = prisma.db.orm as unknown as Record<string, PrismaOrmModel<T>>;
+function getModel<T>(prisma: PrismaService | any, name: string): PrismaOrmModel<T> {
+  const orm = ((prisma as any)?.db?.orm ?? (prisma as any)?.orm ?? prisma) as unknown as Record<string, PrismaOrmModel<T>>;
   const lowerName = name.charAt(0).toLowerCase() + name.slice(1);
   return (
     orm[name] ||
@@ -41,33 +41,33 @@ function getModel<T>(prisma: PrismaService, name: string): PrismaOrmModel<T> {
   );
 }
 
-export function getCustomerModel(prisma: PrismaService): PrismaOrmModel<PrismaCustomerRecord> {
+export function getCustomerModel(prisma: PrismaService | any): PrismaOrmModel<PrismaCustomerRecord> {
   return getModel<PrismaCustomerRecord>(prisma, 'Customer');
 }
 
-export function getTicketModel(prisma: PrismaService): PrismaOrmModel<PrismaTicketRecord> {
+export function getTicketModel(prisma: PrismaService | any): PrismaOrmModel<PrismaTicketRecord> {
   return getModel<PrismaTicketRecord>(prisma, 'Ticket');
 }
 
 export function getTicketCommentModel(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
 ): PrismaOrmModel<PrismaTicketCommentRecord> {
   return getModel<PrismaTicketCommentRecord>(prisma, 'TicketComment');
 }
 
 export function getConversationModel(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
 ): PrismaOrmModel<PrismaConversationRecord> {
   return getModel<PrismaConversationRecord>(prisma, 'Conversation');
 }
 
 export function getConversationParticipantModel(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
 ): PrismaOrmModel<PrismaConversationParticipantRecord> {
   return getModel<PrismaConversationParticipantRecord>(prisma, 'ConversationParticipant');
 }
 
-export function getMessageModel(prisma: PrismaService): PrismaOrmModel<PrismaMessageRecord> {
+export function getMessageModel(prisma: PrismaService | any): PrismaOrmModel<PrismaMessageRecord> {
   return getModel<PrismaMessageRecord>(prisma, 'Message');
 }
 
@@ -489,7 +489,7 @@ export async function listCommentsByTicket(
 // ==========================================
 
 export async function createConversation(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
   data: CreateConversationData,
 ): Promise<ConversationWithDetails> {
   const model = getConversationModel(prisma);

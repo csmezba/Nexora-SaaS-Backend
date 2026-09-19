@@ -8,7 +8,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service.js';
+import { PrismaService, runTransaction } from '../prisma/prisma.service.js';
 import { OrganizationRole } from '../organization/enums/organization-role.enum.js';
 import * as OrgHelper from '../organization/organization.helper.js';
 import * as UserHelper from '../user/user.helper.js';
@@ -126,47 +126,51 @@ export class ProjectService {
         }
       }
 
-      const project = await ProjectHelper.createProject(this.prisma, {
-        organizationId: org.id,
-        teamId,
-        createdById: userId,
-        name: input.name,
-        key: normalizedKey,
-        description: input.description,
-        status: input.status,
-        startDate: input.startDate,
-        dueDate: input.dueDate,
-      });
+      const project = await runTransaction(this.prisma, async (tx) => {
+        const createdProject = await ProjectHelper.createProject(tx, {
+          organizationId: org.id,
+          teamId,
+          createdById: userId,
+          name: input.name,
+          key: normalizedKey,
+          description: input.description,
+          status: input.status,
+          startDate: input.startDate,
+          dueDate: input.dueDate,
+        });
 
-      // Automatically add project creator as first member
-      await ProjectHelper.addMemberToProject(this.prisma, {
-        projectId: project.id,
-        userId,
-      });
+        // Automatically add project creator as first member
+        await ProjectHelper.addMemberToProject(tx, {
+          projectId: createdProject.id,
+          userId,
+        });
 
-      // Optionally add initial members
-      if (input.initialMemberPubIds && input.initialMemberPubIds.length > 0) {
-        for (const userPubId of input.initialMemberPubIds) {
-          const targetUser = await UserHelper.findUserByPubId(
-            this.prisma,
-            userPubId,
-          );
-          if (!targetUser) continue;
+        // Optionally add initial members
+        if (input.initialMemberPubIds && input.initialMemberPubIds.length > 0) {
+          for (const userPubId of input.initialMemberPubIds) {
+            const targetUser = await UserHelper.findUserByPubId(
+              this.prisma,
+              userPubId,
+            );
+            if (!targetUser) continue;
 
-          // Verify member belongs to parent organization
-          const orgMember = await OrgHelper.findByOrgAndUser(
-            this.prisma,
-            org.id,
-            targetUser.id,
-          );
-          if (orgMember) {
-            await ProjectHelper.addMemberToProject(this.prisma, {
-              projectId: project.id,
-              userId: targetUser.id,
-            });
+            // Verify member belongs to parent organization
+            const orgMember = await OrgHelper.findByOrgAndUser(
+              this.prisma,
+              org.id,
+              targetUser.id,
+            );
+            if (orgMember) {
+              await ProjectHelper.addMemberToProject(tx, {
+                projectId: createdProject.id,
+                userId: targetUser.id,
+              });
+            }
           }
         }
-      }
+
+        return createdProject;
+      });
 
       const refreshed = await ProjectHelper.findProjectById(
         this.prisma,

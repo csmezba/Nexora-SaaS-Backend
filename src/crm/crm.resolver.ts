@@ -288,14 +288,14 @@ export class CrmResolver {
 
   @Query(() => Int, {
     name: 'unreadMessageCount',
-    description: 'Get total unread messages count in a conversation for a user',
+    description: 'Get total unread messages count in a conversation for the current user',
   })
   async unreadMessageCount(
     @Args('conversationPubId', { type: () => String })
     conversationPubId: string,
-    @CurrentUser('pubId') userPubId: string,
+    @CurrentUser('id') userId: number,
   ): Promise<number> {
-    return this.crmService.getUnreadCount(conversationPubId, userPubId);
+    return this.crmService.getUnreadCount(conversationPubId, userId);
   }
 
   @Query(() => [String], {
@@ -305,7 +305,20 @@ export class CrmResolver {
   async onlineUsers(
     @Args('organizationPubId', { type: () => String })
     organizationPubId: string,
+    @CurrentUser('id') userId: number,
   ): Promise<string[]> {
-    return this.crmService.getOnlineUsers(organizationPubId);
+    return this.crmService.getOnlineUsers(organizationPubId, userId);
+  }
+
+  @Mutation(() => Boolean, {
+    name: 'markConversationAsRead',
+    description: 'Mark conversation unread messages as read for the current user',
+  })
+  async markConversationAsRead(
+    @Args('conversationPubId', { type: () => String })
+    conversationPubId: string,
+    @CurrentUser('id') userId: number,
+  ): Promise<boolean> {
+    return this.crmService.markConversationAsRead(conversationPubId, userId);
   }
 }

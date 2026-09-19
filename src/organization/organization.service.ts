@@ -8,7 +8,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service.js';
+import { PrismaService, runTransaction } from '../prisma/prisma.service.js';
 import { OrganizationRole } from './enums/organization-role.enum.js';
 import { generatePubId } from '../common/utils/unique-id.util.js';
 import {
@@ -59,22 +59,29 @@ export class OrganizationService {
       }
 
       const now = new Date().toISOString();
-      const org = await orgModel.create({
-        pubId: generatePubId('org'),
-        name: input.name?.trim() || null,
-        slug,
-        logoUrl: input.logoUrl ?? null,
-        description: input.description ?? null,
-        createdAt: now,
-        updatedAt: now,
-      });
+      const org = await runTransaction(this.prisma, async (tx) => {
+        const orgModel = OrgHelper.getOrgModel(tx);
+        const memberModel = OrgHelper.getMemberModel(tx);
 
-      await memberModel.create({
-        pubId: generatePubId('mem'),
-        organizationId: org.id,
-        userId,
-        role: OrganizationRole.OWNER,
-        joinedAt: now,
+        const createdOrg = await orgModel.create({
+          pubId: generatePubId('org'),
+          name: input.name?.trim() || null,
+          slug,
+          logoUrl: input.logoUrl ?? null,
+          description: input.description ?? null,
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        await memberModel.create({
+          pubId: generatePubId('mem'),
+          organizationId: createdOrg.id,
+          userId,
+          role: OrganizationRole.OWNER,
+          joinedAt: now,
+        });
+
+        return createdOrg;
       });
 
       return {

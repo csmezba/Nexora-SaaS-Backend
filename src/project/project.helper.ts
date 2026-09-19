@@ -14,9 +14,9 @@ import type {
 } from './types/project.types.js';
 
 export function getProjectModel(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
 ): PrismaOrmModel<PrismaProjectRecord> {
-  const orm = prisma.db.orm as unknown as Record<
+  const orm = ((prisma as any)?.db?.orm ?? (prisma as any)?.orm ?? prisma) as unknown as Record<
     string,
     PrismaOrmModel<PrismaProjectRecord>
   >;
@@ -28,9 +28,9 @@ export function getProjectModel(
 }
 
 export function getProjectMemberModel(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
 ): PrismaOrmModel<PrismaProjectMemberRecord> {
-  const orm = prisma.db.orm as unknown as Record<
+  const orm = ((prisma as any)?.db?.orm ?? (prisma as any)?.orm ?? prisma) as unknown as Record<
     string,
     PrismaOrmModel<PrismaProjectMemberRecord>
   >;
@@ -155,7 +155,7 @@ export async function listProjectsByUser(
 // --- Project Mutations ---
 
 export async function createProject(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
   data: CreateProjectData,
 ): Promise<ProjectWithDetails> {
   const projectModel = getProjectModel(prisma);
@@ -219,7 +219,7 @@ export async function deleteProject(
 // --- Project Member Operations ---
 
 export async function findProjectMember(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
   projectId: number,
   userId: number,
 ): Promise<PrismaProjectMemberRecord | null> {
@@ -270,7 +270,7 @@ export async function countProjectMembers(
 }
 
 export async function addMemberToProject(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
   data: AddProjectMemberData,
 ): Promise<PrismaProjectMemberRecord> {
   const projectMemberModel = getProjectMemberModel(prisma);

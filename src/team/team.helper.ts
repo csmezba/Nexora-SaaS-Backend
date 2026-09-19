@@ -12,9 +12,9 @@ import type {
 } from './types/team.types.js';
 
 export function getTeamModel(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
 ): PrismaOrmModel<PrismaTeamRecord> {
-  const orm = prisma.db.orm as unknown as Record<
+  const orm = ((prisma as any)?.db?.orm ?? (prisma as any)?.orm ?? prisma) as unknown as Record<
     string,
     PrismaOrmModel<PrismaTeamRecord>
   >;
@@ -26,9 +26,9 @@ export function getTeamModel(
 }
 
 export function getTeamMemberModel(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
 ): PrismaOrmModel<PrismaTeamMemberRecord> {
-  const orm = prisma.db.orm as unknown as Record<
+  const orm = ((prisma as any)?.db?.orm ?? (prisma as any)?.orm ?? prisma) as unknown as Record<
     string,
     PrismaOrmModel<PrismaTeamMemberRecord>
   >;
@@ -134,7 +134,7 @@ export async function listTeamsByUser(
 // --- Team Mutations ---
 
 export async function createTeam(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
   data: CreateTeamData,
 ): Promise<TeamWithDetails> {
   const teamModel = getTeamModel(prisma);
@@ -184,7 +184,7 @@ export async function deleteTeam(
 // --- Team Member Operations ---
 
 export async function findTeamMember(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
   teamId: number,
   userId: number,
 ): Promise<PrismaTeamMemberRecord | null> {
@@ -235,7 +235,7 @@ export async function countTeamMembers(
 }
 
 export async function addMemberToTeam(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
   data: AddTeamMemberData,
 ): Promise<PrismaTeamMemberRecord> {
   const teamMemberModel = getTeamMemberModel(prisma);

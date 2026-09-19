@@ -16,9 +16,9 @@ import type {
 const logger = new Logger('OrganizationHelper');
 
 export function getOrgModel(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
 ): PrismaOrmModel<PrismaOrganizationRecord> {
-  const orm = prisma.db.orm as unknown as Record<
+  const orm = ((prisma as any)?.db?.orm ?? (prisma as any)?.orm ?? prisma) as unknown as Record<
     string,
     PrismaOrmModel<PrismaOrganizationRecord>
   >;
@@ -35,9 +35,9 @@ export function getOrgModel(
 }
 
 export function getMemberModel(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
 ): PrismaOrmModel<PrismaMemberRecord> {
-  const orm = prisma.db.orm as unknown as Record<
+  const orm = ((prisma as any)?.db?.orm ?? (prisma as any)?.orm ?? prisma) as unknown as Record<
     string,
     PrismaOrmModel<PrismaMemberRecord>
   >;

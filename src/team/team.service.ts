@@ -8,7 +8,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service.js';
+import { PrismaService, runTransaction } from '../prisma/prisma.service.js';
 import { OrganizationRole } from '../organization/enums/organization-role.enum.js';
 import * as OrgHelper from '../organization/organization.helper.js';
 import * as UserHelper from '../user/user.helper.js';
@@ -97,32 +97,36 @@ export class TeamService {
         );
       }
 
-      const team = await TeamHelper.createTeam(this.prisma, {
-        organizationId: org.id,
-        name: input.name,
-        description: input.description,
-      });
+      const team = await runTransaction(this.prisma, async (tx) => {
+        const createdTeam = await TeamHelper.createTeam(tx, {
+          organizationId: org.id,
+          name: input.name,
+          description: input.description,
+        });
 
-      // Optionally add initial members
-      if (input.initialMemberPubIds && input.initialMemberPubIds.length > 0) {
-        for (const userPubId of input.initialMemberPubIds) {
-          const user = await UserHelper.findUserByPubId(this.prisma, userPubId);
-          if (!user) continue;
+        // Optionally add initial members
+        if (input.initialMemberPubIds && input.initialMemberPubIds.length > 0) {
+          for (const userPubId of input.initialMemberPubIds) {
+            const user = await UserHelper.findUserByPubId(this.prisma, userPubId);
+            if (!user) continue;
 
-          // Verify user is an active organization member
-          const orgMember = await OrgHelper.findByOrgAndUser(
-            this.prisma,
-            org.id,
-            user.id,
-          );
-          if (orgMember) {
-            await TeamHelper.addMemberToTeam(this.prisma, {
-              teamId: team.id,
-              userId: user.id,
-            });
+            // Verify user is an active organization member
+            const orgMember = await OrgHelper.findByOrgAndUser(
+              this.prisma,
+              org.id,
+              user.id,
+            );
+            if (orgMember) {
+              await TeamHelper.addMemberToTeam(tx, {
+                teamId: createdTeam.id,
+                userId: user.id,
+              });
+            }
           }
         }
-      }
+
+        return createdTeam;
+      });
 
       const refreshed = await TeamHelper.findTeamById(this.prisma, team.id);
       return this.toTeamResponseDto(refreshed ?? team, org.pubId);

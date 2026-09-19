@@ -9,9 +9,9 @@ import type {
 } from './types/user.types.js';
 
 export function getUserModel(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
 ): PrismaOrmModel<PrismaUserRecord> {
-  const orm = prisma.db.orm as unknown as Record<
+  const orm = ((prisma as any)?.db?.orm ?? (prisma as any)?.orm ?? prisma) as unknown as Record<
     string,
     PrismaOrmModel<PrismaUserRecord>
   >;
@@ -73,7 +73,7 @@ export async function findUserByEmail(
 }
 
 export async function createUser(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
   data: CreateUserData,
 ): Promise<PrismaUserRecord> {
   const userModel = getUserModel(prisma);
@@ -91,7 +91,7 @@ export async function createUser(
 }
 
 export async function updateUser(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
   id: number,
   data: UpdateUserData,
 ): Promise<PrismaUserRecord | null> {

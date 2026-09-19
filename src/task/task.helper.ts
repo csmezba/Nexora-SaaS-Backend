@@ -32,8 +32,8 @@ import type {
 
 // --- Model Accessors ---
 
-function getModel<T>(prisma: PrismaService, name: string): PrismaOrmModel<T> {
-  const orm = prisma.db.orm as unknown as Record<string, PrismaOrmModel<T>>;
+function getModel<T>(prisma: PrismaService | any, name: string): PrismaOrmModel<T> {
+  const orm = ((prisma as any)?.db?.orm ?? (prisma as any)?.orm ?? prisma) as unknown as Record<string, PrismaOrmModel<T>>;
   const lowerName = name.charAt(0).toLowerCase() + name.slice(1);
   return (
     orm[name] ||
@@ -42,44 +42,44 @@ function getModel<T>(prisma: PrismaService, name: string): PrismaOrmModel<T> {
   );
 }
 
-export function getTaskModel(prisma: PrismaService): PrismaOrmModel<PrismaTaskRecord> {
+export function getTaskModel(prisma: PrismaService | any): PrismaOrmModel<PrismaTaskRecord> {
   return getModel<PrismaTaskRecord>(prisma, 'Task');
 }
 
 export function getTaskAssigneeModel(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
 ): PrismaOrmModel<PrismaTaskAssigneeRecord> {
   return getModel<PrismaTaskAssigneeRecord>(prisma, 'TaskAssignee');
 }
 
-export function getLabelModel(prisma: PrismaService): PrismaOrmModel<PrismaLabelRecord> {
+export function getLabelModel(prisma: PrismaService | any): PrismaOrmModel<PrismaLabelRecord> {
   return getModel<PrismaLabelRecord>(prisma, 'Label');
 }
 
 export function getTaskLabelModel(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
 ): PrismaOrmModel<PrismaTaskLabelRecord> {
   return getModel<PrismaTaskLabelRecord>(prisma, 'TaskLabel');
 }
 
 export function getTaskCommentModel(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
 ): PrismaOrmModel<PrismaTaskCommentRecord> {
   return getModel<PrismaTaskCommentRecord>(prisma, 'TaskComment');
 }
 
 export function getTaskDependencyModel(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
 ): PrismaOrmModel<PrismaTaskDependencyRecord> {
   return getModel<PrismaTaskDependencyRecord>(prisma, 'TaskDependency');
 }
 
-export function getSprintModel(prisma: PrismaService): PrismaOrmModel<PrismaSprintRecord> {
+export function getSprintModel(prisma: PrismaService | any): PrismaOrmModel<PrismaSprintRecord> {
   return getModel<PrismaSprintRecord>(prisma, 'Sprint');
 }
 
 export function getSprintTaskModel(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
 ): PrismaOrmModel<PrismaSprintTaskRecord> {
   return getModel<PrismaSprintTaskRecord>(prisma, 'SprintTask');
 }
@@ -177,7 +177,7 @@ export async function listSubTasks(
 }
 
 export async function createTask(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
   data: CreateTaskData,
 ): Promise<TaskWithDetails> {
   const taskModel = getTaskModel(prisma);
@@ -304,7 +304,7 @@ export async function listTaskAssignees(
 }
 
 export async function assignUserToTask(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
   taskId: number,
   userId: number,
   pubId?: string,
@@ -440,7 +440,7 @@ export async function deleteLabel(
 }
 
 export async function addLabelToTask(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
   taskId: number,
   labelId: number,
   pubId?: string,
@@ -834,7 +834,7 @@ export async function deleteSprint(
 }
 
 export async function addTaskToSprint(
-  prisma: PrismaService,
+  prisma: PrismaService | any,
   sprintId: number,
   taskId: number,
   pubId?: string,

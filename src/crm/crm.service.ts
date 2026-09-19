@@ -6,7 +6,7 @@ import {
   NotFoundException,
   Optional,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service.js';
+import { PrismaService, runTransaction } from '../prisma/prisma.service.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
 import { RedisService } from '../redis/redis.service.js';
 import * as CrmHelper from './crm.helper.js';
@@ -621,10 +621,12 @@ export class CrmService {
       }
     }
 
-    const conv = await CrmHelper.createConversation(this.prisma, {
-      customerId: customer.id,
-      title: input.title,
-      participantUserIds,
+    const conv = await runTransaction(this.prisma, async (tx) => {
+      return CrmHelper.createConversation(tx, {
+        customerId: customer.id,
+        title: input.title,
+        participantUserIds,
+      });
     });
 
     const org = await OrgHelper.findOrgById(this.prisma, customer.organizationId);
@@ -962,14 +964,47 @@ export class CrmService {
 
   async getUnreadCount(
     conversationPubId: string,
-    userPubId: string,
+    userId: number,
   ): Promise<number> {
     if (!this.redisService) return 0;
-    return this.redisService.getUnread(conversationPubId, userPubId);
+    const conv = await this.resolveConversation(conversationPubId);
+    const customer = await CrmHelper.findCustomerById(
+      this.prisma,
+      conv.customerId,
+    );
+    if (!customer) throw new NotFoundException('Customer not found');
+    await this.ensureOrgMember(customer.organizationId, userId);
+
+    const user = await UserHelper.findUserById(this.prisma, userId);
+    if (!user?.pubId) return 0;
+
+    return this.redisService.getUnread(conv.pubId, user.pubId);
   }
 
-  async getOnlineUsers(orgPubId: string): Promise<string[]> {
+  async getOnlineUsers(orgPubId: string, userId: number): Promise<string[]> {
     if (!this.redisService) return [];
-    return this.redisService.getOnlineUsers(orgPubId);
+    const org = await this.resolveOrg(orgPubId);
+    await this.ensureOrgMember(org.id, userId);
+    return this.redisService.getOnlineUsers(org.pubId);
+  }
+
+  async markConversationAsRead(
+    conversationPubId: string,
+    userId: number,
+  ): Promise<boolean> {
+    if (!this.redisService) return true;
+    const conv = await this.resolveConversation(conversationPubId);
+    const customer = await CrmHelper.findCustomerById(
+      this.prisma,
+      conv.customerId,
+    );
+    if (!customer) throw new NotFoundException('Customer not found');
+    await this.ensureOrgMember(customer.organizationId, userId);
+
+    const user = await UserHelper.findUserById(this.prisma, userId);
+    if (user?.pubId) {
+      await this.redisService.clearUnread(conv.pubId, user.pubId);
+    }
+    return true;
   }
 }
