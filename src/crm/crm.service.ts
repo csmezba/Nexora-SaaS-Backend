@@ -4,9 +4,11 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
+import { RedisService } from '../redis/redis.service.js';
 import * as CrmHelper from './crm.helper.js';
 import * as OrgHelper from '../organization/organization.helper.js';
 import * as UserHelper from '../user/user.helper.js';
@@ -52,10 +54,11 @@ export class CrmService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtimeService: RealtimeService,
+    @Optional() private readonly redisService?: RedisService,
   ) {}
 
   // ==========================================
-  // PERMISSION & SCOPE RESOLUTION
+  // PERMISSION & SCOPE RESOLUTION (WITH REDIS CACHE)
   // ==========================================
 
   private async resolveUser(userPubIdOrId: string | number) {
@@ -83,12 +86,23 @@ export class CrmService {
   }
 
   private async resolveCustomer(customerPubId: string) {
+    const cacheKey = `crm:customer:${customerPubId}`;
+    if (this.redisService) {
+      const cached = await this.redisService.get<PrismaCustomerRecord>(cacheKey);
+      if (cached) return cached;
+    }
+
     const customer = await CrmHelper.findCustomerByPubId(
       this.prisma,
       customerPubId,
     );
     if (!customer) {
       throw new NotFoundException(`Customer '${customerPubId}' not found`);
+    }
+
+    if (this.redisService) {
+      // Cache customer metadata for 10 minutes (600s)
+      await this.redisService.set(cacheKey, customer, 600);
     }
     return customer;
   }
@@ -113,6 +127,13 @@ export class CrmService {
   }
 
   private async resolveConversation(conversationPubId: string) {
+    const cacheKey = `crm:conversation:${conversationPubId}`;
+    if (this.redisService) {
+      const cached =
+        await this.redisService.get<ConversationWithDetails>(cacheKey);
+      if (cached) return cached;
+    }
+
     const conversation = await CrmHelper.findConversationByPubId(
       this.prisma,
       conversationPubId,
@@ -122,10 +143,24 @@ export class CrmService {
         `Conversation '${conversationPubId}' not found`,
       );
     }
+
+    if (this.redisService) {
+      // Cache conversation details for 10 minutes (600s)
+      await this.redisService.set(cacheKey, conversation, 600);
+    }
     return conversation;
   }
 
   private async ensureOrgMember(organizationId: number, userId: number) {
+    const cacheKey = `org:${organizationId}:user:${userId}:member`;
+    if (this.redisService) {
+      const cached =
+        await this.redisService.get<
+          Awaited<ReturnType<typeof OrgHelper.findByOrgAndUser>>
+        >(cacheKey);
+      if (cached) return cached;
+    }
+
     const member = await OrgHelper.findByOrgAndUser(
       this.prisma,
       organizationId,
@@ -133,6 +168,11 @@ export class CrmService {
     );
     if (!member) {
       throw new ForbiddenException('You are not a member of this organization');
+    }
+
+    if (this.redisService) {
+      // Cache member role for 10 minutes (600s)
+      await this.redisService.set(cacheKey, member, 600);
     }
     return member;
   }
@@ -208,6 +248,10 @@ export class CrmService {
       throw new NotFoundException('Customer not found after update');
     }
 
+    if (this.redisService) {
+      await this.redisService.del(`crm:customer:${pubId}`);
+    }
+
     return this.mapCustomerToDto(updated, org?.pubId ?? '');
   }
 
@@ -219,6 +263,11 @@ export class CrmService {
     await this.ensureCanManageCrm(customer.organizationId, userId);
 
     await CrmHelper.deleteCustomer(this.prisma, customer.id);
+
+    if (this.redisService) {
+      await this.redisService.del(`crm:customer:${pubId}`);
+    }
+
     return {
       success: true,
       message: `Customer '${pubId}' has been deleted`,
@@ -595,6 +644,14 @@ export class CrmService {
 
     if (userId) {
       await this.ensureOrgMember(customer.organizationId, userId);
+
+      // Clear unread messages count for current user in Redis
+      if (this.redisService) {
+        const currentUser = await UserHelper.findUserById(this.prisma, userId);
+        if (currentUser?.pubId) {
+          await this.redisService.clearUnread(conv.pubId, currentUser.pubId);
+        }
+      }
     }
     const org = await OrgHelper.findOrgById(this.prisma, customer.organizationId);
 
@@ -641,6 +698,19 @@ export class CrmService {
 
     const dto = this.mapMessageToDto(message, conv.pubId);
 
+    // Invalidate conversation cache & increment unread counter in Redis
+    if (this.redisService) {
+      await this.redisService.del(`crm:conversation:${conv.pubId}`);
+
+      if (conv.participants?.length) {
+        for (const p of conv.participants) {
+          if (p.user?.pubId && p.userId !== userId) {
+            await this.redisService.incrementUnread(conv.pubId, p.user.pubId);
+          }
+        }
+      }
+    }
+
     // Realtime broadcast to the specific conversation channel
     await this.realtimeService.emit(
       `conversation:${conv.pubId}`,
@@ -658,6 +728,21 @@ export class CrmService {
   async sendPublicInquiry(
     input: PublicInquiryInput,
   ): Promise<PublicInquiryResponseDto> {
+    // Check rate limit via Redis (max 5 inquiries per minute per email)
+    if (this.redisService) {
+      const rateLimitKey = `rate_limit:inquiry:${input.email.toLowerCase().trim()}`;
+      const { allowed } = await this.redisService.checkRateLimit(
+        rateLimitKey,
+        5,
+        60,
+      );
+      if (!allowed) {
+        throw new BadRequestException(
+          'Too many inquiries submitted. Please wait a minute and try again.',
+        );
+      }
+    }
+
     // 1. Resolve target organization
     let org = null;
     if (input.organizationPubId) {
@@ -869,5 +954,22 @@ export class CrmService {
       createdAt: new Date(user.createdAt),
       updatedAt: new Date(user.updatedAt),
     };
+  }
+
+  // ==========================================
+  // REDIS REALTIME & PRESENCE METRICS
+  // ==========================================
+
+  async getUnreadCount(
+    conversationPubId: string,
+    userPubId: string,
+  ): Promise<number> {
+    if (!this.redisService) return 0;
+    return this.redisService.getUnread(conversationPubId, userPubId);
+  }
+
+  async getOnlineUsers(orgPubId: string): Promise<string[]> {
+    if (!this.redisService) return [];
+    return this.redisService.getOnlineUsers(orgPubId);
   }
 }

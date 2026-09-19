@@ -8,10 +8,11 @@ import {
   MessageBody,
   ConnectedSocket,
 } from '@nestjs/websockets';
-import { Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { Redis } from 'ioredis';
+import { RedisService } from '../../redis/redis.service.js';
 
 @WebSocketGateway({
   cors: {
@@ -19,6 +20,7 @@ import { Redis } from 'ioredis';
   },
   transports: ['websocket', 'polling'],
 })
+@Injectable()
 export class RealtimeGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
 {
@@ -28,6 +30,8 @@ export class RealtimeGateway
   private readonly logger = new Logger(RealtimeGateway.name);
   private pubClient: Redis | null = null;
   private subClient: Redis | null = null;
+
+  constructor(@Optional() private readonly redisService?: RedisService) {}
 
   async afterInit(server: Server) {
     const isVercel =
@@ -82,8 +86,12 @@ export class RealtimeGateway
     this.logger.debug(`Client connected: ${client.id}`);
   }
 
-  handleDisconnect(client: Socket) {
+  async handleDisconnect(client: Socket) {
     this.logger.debug(`Client disconnected: ${client.id}`);
+    const { orgPubId, userPubId } = client.data || {};
+    if (orgPubId && userPubId && this.redisService) {
+      await this.redisService.setUserOffline(orgPubId, userPubId);
+    }
   }
 
   @SubscribeMessage('join:channel')
@@ -110,6 +118,70 @@ export class RealtimeGateway
       return { status: 'ok', channel: data.channel };
     }
     return { status: 'error', message: 'Channel is required' };
+  }
+
+  // ==========================================
+  // PRESENCE & TYPING INDICATORS
+  // ==========================================
+
+  @SubscribeMessage('presence:heartbeat')
+  async handlePresenceHeartbeat(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { orgPubId: string; userPubId: string },
+  ) {
+    if (data?.orgPubId && data?.userPubId) {
+      client.data.orgPubId = data.orgPubId;
+      client.data.userPubId = data.userPubId;
+      if (this.redisService) {
+        await this.redisService.setUserOnline(data.orgPubId, data.userPubId, 60);
+      }
+      return { status: 'ok', online: true };
+    }
+    return { status: 'error', message: 'orgPubId and userPubId required' };
+  }
+
+  @SubscribeMessage('typing:start')
+  handleTypingStart(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    data: {
+      conversationPubId: string;
+      userPubId: string;
+      userName?: string;
+    },
+  ) {
+    if (data?.conversationPubId) {
+      client
+        .to(`conversation:${data.conversationPubId}`)
+        .emit('typing:started', {
+          conversationPubId: data.conversationPubId,
+          userPubId: data.userPubId,
+          userName: data.userName,
+        });
+      return { status: 'ok' };
+    }
+    return { status: 'error', message: 'conversationPubId required' };
+  }
+
+  @SubscribeMessage('typing:stop')
+  handleTypingStop(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    data: {
+      conversationPubId: string;
+      userPubId: string;
+    },
+  ) {
+    if (data?.conversationPubId) {
+      client
+        .to(`conversation:${data.conversationPubId}`)
+        .emit('typing:stopped', {
+          conversationPubId: data.conversationPubId,
+          userPubId: data.userPubId,
+        });
+      return { status: 'ok' };
+    }
+    return { status: 'error', message: 'conversationPubId required' };
   }
 
   emitToChannel<T = unknown>(channel: string, event: string, data: T) {

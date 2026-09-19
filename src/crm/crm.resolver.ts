@@ -1,5 +1,5 @@
 import { UseGuards } from '@nestjs/common';
-import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Args, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import { Public } from '../auth/decorators/public.decorator.js';
@@ -280,5 +280,32 @@ export class CrmResolver {
     @Args('input') input: PublicInquiryInput,
   ): Promise<PublicInquiryResponseDto> {
     return this.crmService.sendPublicInquiry(input);
+  }
+
+  // ==========================================
+  // REALTIME & PRESENCE METRICS
+  // ==========================================
+
+  @Query(() => Int, {
+    name: 'unreadMessageCount',
+    description: 'Get total unread messages count in a conversation for a user',
+  })
+  async unreadMessageCount(
+    @Args('conversationPubId', { type: () => String })
+    conversationPubId: string,
+    @CurrentUser('pubId') userPubId: string,
+  ): Promise<number> {
+    return this.crmService.getUnreadCount(conversationPubId, userPubId);
+  }
+
+  @Query(() => [String], {
+    name: 'onlineUsers',
+    description: 'Get list of active online user pubIds for an organization',
+  })
+  async onlineUsers(
+    @Args('organizationPubId', { type: () => String })
+    organizationPubId: string,
+  ): Promise<string[]> {
+    return this.crmService.getOnlineUsers(organizationPubId);
   }
 }

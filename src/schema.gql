@@ -1030,6 +1030,9 @@ type Query {
   """Fetch all organizations the authenticated user is a member of"""
   myOrganizations: [Organization!]!
 
+  """Get list of active online user pubIds for an organization"""
+  onlineUsers(organizationPubId: String!): [String!]!
+
   """Fetch organization details by unique pubId or slug"""
   organization(
     """Organization pubId or slug"""
@@ -1175,6 +1178,9 @@ type Query {
 
   """List support tickets in an organization with filters"""
   tickets(filter: TicketFilterInput, organizationPubId: String!): [TicketResponseDto!]!
+
+  """Get total unread messages count in a conversation for a user"""
+  unreadMessageCount(conversationPubId: String!): Int!
 
   """Fetch projects that the authenticated user is assigned to as a member"""
   userProjects(

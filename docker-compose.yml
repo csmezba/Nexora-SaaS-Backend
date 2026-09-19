@@ -2,7 +2,6 @@ services:
   db:
     image: postgres:16-alpine
     container_name: postgres_db
-    restart: always
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: root132
@@ -15,7 +14,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: redis_cache
-    restart: always
     ports:
       - '6379:6379'
     volumes:

@@ -2,6 +2,7 @@ import {
   CanActivate,
   ExecutionContext,
   Injectable,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -9,6 +10,7 @@ import { GqlExecutionContext } from '@nestjs/graphql';
 import { JwtService } from '@nestjs/jwt';
 import type { Request } from 'express';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { RedisService } from '../../redis/redis.service.js';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator.js';
 import * as AuthHelper from '../auth.helper.js';
 import * as UserHelper from '../../user/user.helper.js';
@@ -19,6 +21,7 @@ export class JwtAuthGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly jwtService: JwtService,
     private readonly prisma: PrismaService,
+    @Optional() private readonly redisService?: RedisService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -43,15 +46,32 @@ export class JwtAuthGuard implements CanActivate {
         this.jwtService,
         token,
       );
-      const user = await UserHelper.findUserById(this.prisma, payload.sub);
 
-      if (!user) {
-        throw new UnauthorizedException('User no longer exists');
+      const cacheKey = `user:session:${payload.sub}`;
+      let sanitizedUser: ReturnType<typeof UserHelper.sanitizeUser> | null =
+        null;
+
+      if (this.redisService) {
+        sanitizedUser = await this.redisService.get(cacheKey);
+      }
+
+      if (!sanitizedUser) {
+        const user = await UserHelper.findUserById(this.prisma, payload.sub);
+
+        if (!user) {
+          throw new UnauthorizedException('User no longer exists');
+        }
+
+        sanitizedUser = UserHelper.sanitizeUser(user);
+
+        if (this.redisService) {
+          // Cache session profile for 10 minutes (600s)
+          await this.redisService.set(cacheKey, sanitizedUser, 600);
+        }
       }
 
       // Attach sanitized user to request
-      (request as unknown as { user: unknown }).user =
-        UserHelper.sanitizeUser(user);
+      (request as unknown as { user: unknown }).user = sanitizedUser;
       return true;
     } catch (err) {
       if (err instanceof UnauthorizedException) {

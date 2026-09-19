@@ -13,6 +13,7 @@ import { ProjectModule } from './project/project.module.js';
 import { TaskModule } from './task/task.module.js';
 import { RealtimeModule } from './realtime/realtime.module.js';
 import { CrmModule } from './crm/crm.module.js';
+import { RedisModule } from './redis/redis.module.js';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter.js';
 import { ResponseFormatPlugin } from './common/plugins/response-format.plugin.js';
 import { TransformResponseInterceptor } from './common/interceptors/transform-response.interceptor.js';
@@ -67,6 +68,7 @@ import { ObserveModule } from './observe.js';
     TaskModule,
     RealtimeModule,
     CrmModule,
+    RedisModule,
     ObserveModule.forRoot({
       appKey: process.env.OBSERVE_APP_KEY || '',
       appSecret: process.env.OBSERVE_APP_SECRET || '',
